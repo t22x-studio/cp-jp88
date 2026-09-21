@@ -55,6 +55,10 @@ body.ch #qs{display:flex}
 #oct .btn{padding:6px 14px;font-size:12px}#oLab{font-size:12px;color:var(--mute);margin:3px 0}
 body.ch #oct{display:none}
 body.oneL #sR{display:none}body.oneR #sL{display:none}
+/* ===== CSS 8: no zoom / text selection on play surfaces ===== */
+*{-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
+#stage,#pad,.vs,#qs{touch-action:none}
+.btn,#oct button{touch-action:manipulation}
 #svMsg{font-size:13px;word-break:break-all}#svMsg a{color:var(--ink)}
 #svAudio{width:100%;margin:0 0 14px;display:block}
 /* ===== CSS 4: SHEET / OVERLAY / TOAST ===== */
@@ -103,7 +107,7 @@ body.sl .vs{display:block}#sL{left:10px}#sR{right:10px}
 'use strict';
 /* ================= 1. CONFIG (constants + defaults) ================= */
 const RANGE = 180, HYST = 0.2;                       // playable arc (deg), note-border hysteresis
-const DEFAULTS = {inst:'piano',mode:'press',glide:true,step:10,layout:'natural',acc:'zone',tiltTh:12,oct:4,vol:0.8,smooth:1,locked:false,play:'notes',voicing:'guitar',capo:0,clev:2,coct:1,sl:'two',key:0};
+const DEFAULTS = {inst:'piano',mode:'press',glide:true,step:10,layout:'natural',acc:'zone',tiltTh:12,oct:4,vol:0.8,smooth:1,locked:false,play:'notes',voicing:'guitar',capo:0,clev:2,coct:1,sl:'two',key:0,slplay:'off'};
 const PAL = ['#E05A4F','#EE9A3A','#EFCB45','#6DB65B','#3FB4B0','#4F86D9','#8A62C4']; // C D E F G A B (swap here to match any palette)
 const SMOOTH_K = [0.14,0.28,0.5];                    // base filter gain per smoothing level
 const LET = 'CDEFGAB', WHITE = [0,2,4,5,7,9,11];
@@ -556,7 +560,8 @@ const Saver = {                                      // files are built BEFORE t
 const ROWS = [
   {k:'inst',  l:'Instrument', o:Object.keys(INST).map(k=>[k,INST_LABEL[k]])},
   {k:'mode',  l:'Play mode', o:[['press','Press to play'],['auto','Always on']]},
-  {k:'sl',    l:'Slider layout (touch the slider to play in one-hand)', o:[['two','Two sliders'],['oneL','One hand: left'],['oneR','One hand: right']]},
+  {k:'sl',    l:'Slider layout (one-hand = one slider covers the full range)', o:[['two','Two sliders'],['oneL','One hand: left'],['oneR','One hand: right']]},
+  {k:'slplay',l:'One-hand slider: touching it also plays', o:[['off','Off (pad plays)'],['on','On']]},
   {k:'play',  l:'Play', o:[['notes','Notes'],['chords','Chords']]},
   {k:'voicing',l:'Chord voicing', o:[['guitar','Guitar shapes'],['piano','Piano']]},
   {k:'capo',  l:'Capo (chords only)', o:[[0,'None'],[1,'1'],[2,'2'],[3,'3'],[4,'4'],[5,'5'],[6,'6'],[7,'7']]},
@@ -590,6 +595,7 @@ const Settings = {
     if(k==='step'||k==='layout'||k==='oct'||k==='key'||k==='play'){ S.idx=-1; Gl.build(); View.buildLabels(); if(S.slider){ if(k==='oct'||k==='key') SL.layout(); else SL.reset(); } }   // octave shift keeps slider thumbs where they are
     if(k==='play') View.modeUI();
     if(k==='sl'){ View.slUI(); if(S.slider) SL.reset(); }
+    if(k==='slplay'){ S.slDown=false; Input.heldSync(); }
     if(k==='mode'){ S.padDown=false; S.slDown=false; S.held=false; S.paused=false; }
     if(k==='clev') Synth.setVol();
     View.octPaint(); Core.update();
@@ -632,9 +638,9 @@ const SL = {
   reset(){ this.act=(this.one()||'L'); this.v.L=0; this.v.R=0; this.place('L'); this.place('R'); this.layout(); },
   fromY(s,el,y){ const r=el.getBoundingClientRect(); this.move(s,Math.max(0,Math.min(1,1-(y-r.top-28)/(r.height-56)))); },
   init(){ ['L','R'].forEach(s=>{ const el=$('s'+s); const h=(x,y)=>SL.fromY(s,el,y);
-      Drag.bind(el,{ down:(x,y)=>{ if(SL.one()){ S.slDown=true; Input.heldSync(); } h(x,y); },      // one-hand: touching the slider = press
+      Drag.bind(el,{ down:(x,y)=>{ if(SL.one() && cfg.slplay==='on'){ S.slDown=true; Input.heldSync(); } h(x,y); },      // optional: touching the one-hand slider also plays
                      move:h,
-                     up:()=>{ if(SL.one()){ S.slDown=false; Input.heldSync(); Core.update(); } } }); }); }
+                     up:()=>{ if(S.slDown){ S.slDown=false; Input.heldSync(); Core.update(); } } }); }); }
 };
 
 /* ================= 15. INPUT (pad touch: zero-delay trigger) ================= */
@@ -654,6 +660,20 @@ const Input = {
     $('oUp').onclick=()=>{ if(cfg.oct<5) Settings.set('oct',cfg.oct+1); };
     $('oDn').onclick=()=>{ if(cfg.oct>1) Settings.set('oct',cfg.oct-1); };
     document.addEventListener('visibilitychange',()=>{ if(document.hidden){ S.padDown=false; S.slDown=false; S.held=false; Core.update(); } });
+  }
+};
+
+/* ================= 15b. GUARD (double-tap zoom, pinch zoom, selection, page drag) ================= */
+const Guard = {
+  in(e,sel){ const el=e.target&&(e.target.nodeType===1?e.target:e.target.parentElement); return !!(el&&el.closest&&el.closest(sel)); },
+  init(){
+    ['gesturestart','gesturechange','gestureend'].forEach(t=>document.addEventListener(t,e=>e.preventDefault()));         // iOS pinch
+    document.addEventListener('dblclick',e=>e.preventDefault());
+    document.addEventListener('selectstart',e=>{ if(!Guard.in(e,'input')) e.preventDefault(); });
+    document.addEventListener('contextmenu',e=>e.preventDefault());
+    document.addEventListener('touchmove',e=>{ if(!Guard.in(e,'#sheet,#ov')) e.preventDefault(); },{passive:false});      // no page drag / pinch drift
+    let last=0;                                                                                                            // old iOS: double-tap zoom on play surfaces
+    document.addEventListener('touchend',e=>{ const now=Date.now(); if(Guard.in(e,'#stage,#pad,.vs,#qs') && now-last<350) e.preventDefault(); last=now; },{passive:false});
   }
 };
 
@@ -686,7 +706,7 @@ const Boot = {
     $('bStart').textContent='Try again'; Ov.show('gate');
   },
   init(){
-    Store.load(); Chords.init(); View.init(); Settings.build(); Calib.paintLock(); Input.init();
+    Store.load(); Chords.init(); View.init(); Guard.init(); Settings.build(); Calib.paintLock(); Input.init();
     const cv=$('cv'); if(!Gl.init(cv)){ $('gateMsg').textContent='WebGL is not available in this browser.'; $('bStart').disabled=true; }
     else { Boot.fit=()=>{ Gl.resize(cv); View.buildLabels(); S.dirty=true; }; Boot.fit(); window.addEventListener('resize',Boot.fit); window.addEventListener('orientationchange',()=>setTimeout(Boot.fit,250)); }
     Sensor.onData=Core.onSensor; View.modeUI(); View.slUI();
