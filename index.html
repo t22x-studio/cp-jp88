@@ -1,0 +1,706 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="theme-color" content="#ECE8DF">
+<title>Compass Instrument</title>
+<style>
+/* ===== CSS 1: TOKENS (wabi-sabi: paper, ink, one red seal) ===== */
+:root{--bg:#ECE8DF;--ink:#2B2A27;--mute:#857F72;--paper:#E2DDD1;--line:rgba(43,42,39,.2);--seal:#A84B3C}
+@media(prefers-color-scheme:dark){:root{--bg:#1E1D1B;--ink:#E6E1D6;--mute:#8F897C;--paper:#2A2926;--line:rgba(230,225,214,.22);--seal:#D2705F}}
+/* ===== CSS 2: BASE ===== */
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{height:100%;margin:0;background:var(--bg);color:var(--ink);overflow:hidden;overscroll-behavior:none;touch-action:none;-webkit-user-select:none;user-select:none;
+ font-family:-apple-system,BlinkMacSystemFont,"Helvetica Neue","Noto Sans","Segoe UI",Roboto,sans-serif}
+#app{height:100%;display:flex;flex-direction:column;padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)}
+button{font:inherit;color:inherit}
+.btn{background:none;border:1px solid var(--line);border-radius:8px;padding:10px 14px;font-size:14px;cursor:pointer}
+.btn.pri{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.btn.on{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.btn:disabled{opacity:.4}
+/* ===== CSS 3: MAIN LAYOUT ===== */
+.bar{display:flex;justify-content:space-between;gap:8px;padding:10px 14px}
+.read{text-align:center;padding:2px 0 0;position:relative}
+#note{font-size:clamp(46px,13vw,76px);font-weight:300;line-height:1.05}
+#deg{font-size:16px;color:var(--mute);margin-top:2px}
+#accs{font-size:20px;margin-top:4px;display:flex;justify-content:center}
+#accs span{opacity:.25;padding:4px 12px}#accs span.on{opacity:1}
+#stat{font-size:12px;color:var(--mute);margin-top:4px;min-height:16px}
+#stage{position:relative;flex:1;min-height:0}
+#cv{position:absolute;top:0;left:0;width:100%;height:100%}
+#labels{position:absolute;top:0;left:0;right:0;bottom:0;pointer-events:none}
+.lb{position:absolute;transform:translate(-50%,-50%);font-size:12px;opacity:.8}
+.lb.end{color:var(--mute);font-size:11px}
+.lb.sm{font-size:9.5px;white-space:nowrap}
+#pad{margin:6px 16px 16px;height:20vh;min-height:110px;border:1px solid var(--line);border-radius:14px;background:var(--paper);display:flex;overflow:hidden;color:var(--mute);touch-action:none}
+#pad.down{border-color:var(--ink);color:var(--ink)}
+/* ===== CSS 6: PAD ZONES + RECORDER ===== */
+#pad .z{display:flex;align-items:center;justify-content:center;font-size:26px;flex:1}
+#pad .z.c{flex:2;font-size:15px}
+#pad .z+.z{border-left:1px solid var(--line)}
+#pad .z.on{background:var(--line);color:var(--ink)}
+#pad.noacc .z.s{opacity:.35}
+#bRec{position:absolute;top:4px;left:50%;transform:translateX(-50%);padding:7px 14px;font-size:13px;z-index:2}
+#bRec.on{background:var(--seal);border-color:var(--seal);color:#fff}
+#svBtns .btn{display:block;width:100%;margin:0 0 10px}
+/* ===== CSS 7: CHORD MODE ===== */
+#bChord{position:absolute;right:14px;top:0;padding:7px 10px;font-size:13px}
+#qs{display:none;margin:4px 16px 0;border:1px solid var(--line);border-radius:12px;overflow:hidden;touch-action:none}
+body.ch #qs{display:flex}
+#qs span{flex:1;text-align:center;padding:12px 0;font-size:14px;color:var(--mute)}
+#qs span+span{border-left:1px solid var(--line)}
+#qs span.on{background:var(--ink);color:var(--bg)}
+#oct{position:absolute;left:14px;top:0;display:flex;flex-direction:column;align-items:center}
+#oct .btn{padding:6px 14px;font-size:12px}#oLab{font-size:12px;color:var(--mute);margin:3px 0}
+body.ch #oct{display:none}
+body.oneL #sR{display:none}body.oneR #sL{display:none}
+#svMsg{font-size:13px;word-break:break-all}#svMsg a{color:var(--ink)}
+#svAudio{width:100%;margin:0 0 14px;display:block}
+/* ===== CSS 4: SHEET / OVERLAY / TOAST ===== */
+#sheet{position:fixed;left:0;right:0;bottom:0;max-height:80vh;overflow:auto;touch-action:pan-y;background:var(--bg);border-top:1px solid var(--line);border-radius:16px 16px 0 0;
+ padding:16px 16px calc(20px + env(safe-area-inset-bottom));transform:translateY(105%);transition:transform .22s ease;z-index:5}
+#sheet.on{transform:none}
+.row{margin:14px 0}.row>label{display:block;font-size:13px;color:var(--mute);margin-bottom:6px}
+.seg{display:flex;flex-wrap:wrap}.seg .btn{padding:8px 12px;font-size:13px;margin:0 6px 6px 0}
+input[type=range]{width:100%}
+#ov{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(30,29,27,.6);display:none;align-items:center;justify-content:center;padding:20px;z-index:9}
+#ov.on{display:flex}
+.panel{display:none;max-width:340px;width:100%;background:var(--bg);border:1px solid var(--line);border-radius:14px;padding:22px}
+.panel.on{display:block}.panel h2{margin:0 0 8px;font-size:20px;font-weight:400}
+.panel p{margin:0 0 14px;font-size:14px;line-height:1.5;color:var(--mute)}
+.panel .acts{display:flex;justify-content:flex-end}.panel .acts .btn{margin-left:8px}
+#cLive{font-size:15px;color:var(--ink);margin:0 0 14px}
+#toast{position:fixed;left:50%;bottom:24vh;transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:9px 14px;border-radius:8px;font-size:13px;opacity:0;pointer-events:none;transition:opacity .2s;z-index:12}
+#toast.on{opacity:1}
+/* ===== CSS 5: SLIDER MODE ===== */
+.bar .btn{padding:9px 10px;font-size:13px}
+.vs{position:absolute;top:8%;bottom:14%;width:56px;border:1px solid var(--line);border-radius:28px;background:var(--paper);touch-action:none;display:none}
+body.sl .vs{display:block}#sL{left:10px}#sR{right:10px}
+.vs i{position:absolute;left:4px;width:46px;height:48px;border-radius:24px;background:var(--ink);bottom:4px}
+.vs b{position:absolute;left:0;right:0;top:50%;margin-top:-8px;text-align:center;font-size:12px;color:var(--mute);font-weight:400}
+.vs em{position:absolute;left:-10px;right:-10px;text-align:center;font-size:11px;color:var(--mute);font-style:normal}.vs .hi{top:-18px}.vs .lo{bottom:-18px}
+</style>
+</head>
+<body>
+<div id="app">
+  <div class="bar"><button class="btn" id="bCal">Calibrate</button><button class="btn" id="bLock">Lock</button><button class="btn" id="bMode">Sliders</button><button class="btn" id="bSet">Settings</button></div>
+  <div class="read"><div id="oct"><button class="btn" id="oUp">▲</button><span id="oLab">C4</span><button class="btn" id="oDn">▼</button></div><button class="btn" id="bChord">Chords</button><div id="note">–</div><div id="deg">0°</div><div id="accs"><span>♭</span><span>♮</span><span>♯</span></div><div id="stat"></div></div>
+  <div id="stage"><canvas id="cv"></canvas><button class="btn" id="bRec">● Rec</button><div id="labels"></div><div class="vs" id="sL"><em class="hi"></em><b>L</b><i></i><em class="lo"></em></div><div class="vs" id="sR"><em class="hi"></em><b>R</b><i></i><em class="lo"></em></div></div>
+  <div id="qs"><span>Maj</span><span>Min</span><span>7</span><span>m7</span><span>maj7</span><span>sus4</span><span>All</span></div>
+  <div id="pad"><div class="z s">♭</div><div class="z c"><span id="padT">Hold to play</span></div><div class="z s">♯</div></div>
+</div>
+<div id="toast"></div>
+<div id="sheet"><div class="bar" style="padding:0"><b style="font-weight:400;font-size:18px">Settings</b><button class="btn" id="bClose">Close</button></div><div id="rows"></div></div>
+<div id="ov">
+  <div class="panel" id="p-gate"><h2>Compass Instrument</h2><p id="gateMsg">Turn your phone to play notes. Motion sensors are required.</p><div class="acts"><button class="btn" id="bSlide">Use sliders</button><button class="btn pri" id="bStart">Enable compass</button></div></div>
+  <div class="panel" id="p-calib"><h2>Calibrate</h2><p>Face your starting direction (0°). Hold the phone as you will play: screen up, tilted slightly toward you.</p><div id="cLive">–</div><div class="acts"><button class="btn" id="cCancel">Cancel</button><button class="btn pri" id="cSet">Set zero</button></div></div>
+  <div class="panel" id="p-save"><h2>Recording</h2><p id="svInfo">–</p><audio id="svAudio" controls preload="auto"></audio><div id="svBtns"><button class="btn pri" id="svWav">Save WAV</button><button class="btn pri" id="svMid">Save MIDI</button></div><p id="svMsg"></p><div class="acts"><button class="btn" id="svClose">Discard</button></div></div>
+  <div class="panel" id="p-confirm"><h2>Recalibrate?</h2><p>The current zero point will be replaced.</p><div class="acts"><button class="btn" id="kNo">Keep</button><button class="btn pri" id="kYes">Recalibrate</button></div></div>
+</div>
+
+<script>
+'use strict';
+/* ================= 1. CONFIG (constants + defaults) ================= */
+const RANGE = 180, HYST = 0.2;                       // playable arc (deg), note-border hysteresis
+const DEFAULTS = {inst:'piano',mode:'press',glide:true,step:10,layout:'natural',acc:'zone',tiltTh:12,oct:4,vol:0.8,smooth:1,locked:false,play:'notes',voicing:'guitar',capo:0,clev:2,coct:1,sl:'two',key:0};
+const PAL = ['#E05A4F','#EE9A3A','#EFCB45','#6DB65B','#3FB4B0','#4F86D9','#8A62C4']; // C D E F G A B (swap here to match any palette)
+const SMOOTH_K = [0.14,0.28,0.5];                    // base filter gain per smoothing level
+const LET = 'CDEFGAB', WHITE = [0,2,4,5,7,9,11];
+const NAMES = ['C','C♯','D','D♯','E','F','F♯','G','G♯','A','A♯','B'];
+/*KEYS-START*/
+const MAJOR = [0,2,4,5,7,9,11];
+const KEYS = [['C',0,0,0],['G',4,0,1],['D',1,0,2],['A',5,0,3],['E',2,0,4],['B',6,0,5],['F♯',3,1,6],['C♯',0,1,7],['F',3,0,-1],['B♭',6,-1,-2],['E♭',2,-1,-3],['A♭',5,-1,-4],['D♭',1,-1,-5],['G♭',4,-1,-6],['C♭',0,-1,-7]]
+  .map(k=>({name:k[0],letter:k[1],ra:k[2],sig:k[3]}));   // 15 major keys: root letter, root accidental, key signature (+sharps / -flats)
+const KSIG = {};                                          // accidental per letter for each key signature
+for(let n=-7;n<=7;n++){ const a=[0,0,0,0,0,0,0], ord=n>0?'FCGDAEB':'BEADGCF'; for(let i=0;i<Math.abs(n);i++) a[LET.indexOf(ord.charAt(i))]=n>0?1:-1; KSIG[n]=a; }
+/*KEYS-END*/
+/* partials: [type, freqRatio, gain, detuneCents]; a=attack s; d=decay time const (0=sustain); s=sustain; r=release s; lp=lowpass Hz; vib=vibrato cents */
+const INST = {
+  piano:  {p:[['triangle',1,1],['sine',2,.5],['sine',3,.25],['sine',4,.12]],a:.004,d:.55,s:.12,r:.25,lp:5200},
+  organ:  {p:[['sine',1,1],['sine',2,.6],['sine',3,.4],['sine',4,.25]],a:.012,d:0,s:1,r:.07,lp:6000},
+  flute:  {p:[['sine',1,1],['sine',2,.15]],a:.05,d:0,s:1,r:.12,lp:4000,vib:5},
+  strings:{p:[['sawtooth',1,.5,-7],['sawtooth',1,.5,7]],a:.12,d:0,s:1,r:.3,lp:1800,vib:3},
+  bell:   {p:[['sine',1,1],['sine',2.76,.4],['sine',5.4,.2]],a:.002,d:.9,s:.05,r:.3,lp:8000},
+  synth:  {p:[['square',1,.5]],a:.01,d:0,s:.8,r:.1,lp:2500},
+  guitar: {p:[['triangle',1,1],['sine',2,.35],['sine',3,.12]],a:.002,d:.32,s:.03,r:.2,lp:3600}
+};
+const INST_LABEL = {piano:'Piano',organ:'Organ',flute:'Flute',strings:'Strings',bell:'Bell',synth:'Synth',guitar:'Guitar'};
+
+/* ================= 2. STATE ================= */
+const cfg = Object.assign({}, DEFAULTS);
+const S = {padDown:false,slDown:false,q:6,zone:0,touch:false,slider:false,accMan:0,zero:null,beta0:0,heading:0,beta:0,rel:0,idx:-1,acc:0,note:null,held:false,paused:false,dirty:true,lastT:0,src:''};
+const $ = id => document.getElementById(id);
+const Store = {
+  load(){ try{ Object.assign(cfg, JSON.parse(localStorage.getItem('ci_cfg3')||'{}')); }catch(e){}
+    if(cfg.acc===true) cfg.acc='zone'; else if(cfg.acc===false) cfg.acc='off'; },
+  save(){ try{ localStorage.setItem('ci_cfg3', JSON.stringify(cfg)); }catch(e){} }
+};
+
+/* ================= 3. COLOR UTILS ================= */
+const Col = {
+  hex(h){ h=h.trim(); return [1,3,5].map(i=>parseInt(h.substr(i,2),16)/255); },
+  mix(a,b,t){ return [a[0]*(1-t)+b[0]*t, a[1]*(1-t)+b[1]*t, a[2]*(1-t)+b[2]*t]; },
+  theme(){ const cs=getComputedStyle(document.documentElement); const g=k=>Col.hex(cs.getPropertyValue(k)); return {bg:g('--bg'),ink:g('--ink'),seal:g('--seal')}; }
+};
+
+/* ================= 4. SENSOR (permission + heading source) ================= */
+function compassHeading(a,b,g){                      // W3C formula: heading of device top edge, tilt-compensated
+  const d=Math.PI/180,x=b*d,y=g*d,z=a*d,cY=Math.cos(y),cZ=Math.cos(z),sX=Math.sin(x),sY=Math.sin(y),sZ=Math.sin(z);
+  const Vx=-cZ*sY-sZ*sX*cY, Vy=-sZ*sY+cZ*sX*cY; let h=Math.atan(Vx/Vy);
+  if(Vy<0) h+=Math.PI; else if(Vx<0) h+=2*Math.PI; return h/d;
+}
+const Sensor = {
+  got:false, absSeen:false, on:false, onData:null,
+  async request(){
+    const D = window.DeviceOrientationEvent;
+    if(!D) return {ok:false,why:'nosupport'};
+    if(typeof D.requestPermission==='function'){    // iOS 13+: must be inside a tap
+      let r; try{ r = await D.requestPermission(); }catch(e){ return {ok:false,why:'denied'}; }
+      if(r!=='granted') return {ok:false,why:'denied'};
+    }
+    this.listen();
+    return (await this.waitFirst(2500)) ? {ok:true} : {ok:false,why:'nodata'};
+  },
+  listen(){
+    if(this.on) return; this.on=true;
+    const h = e => this.handle(e);
+    if('ondeviceorientationabsolute' in window) window.addEventListener('deviceorientationabsolute',h,true);
+    window.addEventListener('deviceorientation',h,true);
+  },
+  handle(e){
+    let h=null, src='';
+    if(typeof e.webkitCompassHeading==='number' && e.webkitCompassHeading>=0){ h=e.webkitCompassHeading; src='iOS compass'; }
+    else if(e.alpha!=null && e.beta!=null && e.gamma!=null){
+      const abs = e.type==='deviceorientationabsolute';
+      if(abs) this.absSeen=true; else if(this.absSeen) return;
+      h = compassHeading(e.alpha,e.beta,e.gamma); src=(abs||e.absolute)?'Android compass':'Gyro (relative, may drift)';
+    }
+    if(h===null) return;
+    this.got=true; this.src=src; if(!S.slider) S.src=src; if(this.onData) this.onData(h, e.beta||0);
+  },
+  waitFirst(ms){ return new Promise(res=>{ const t0=performance.now(); const c=()=>{ if(this.got) return res(true); if(performance.now()-t0>ms) return res(false); setTimeout(c,50); }; c(); }); }
+};
+
+/* ================= 5. FILTER (circular, adaptive: smooth when still, fast when moving) ================= */
+const Filter = {
+  h:null, b:null,
+  push(h,b){
+    if(this.h===null){ this.h=h; this.b=b; return this; }
+    const d=((h-this.h+540)%360)-180, a=Math.min(1, SMOOTH_K[cfg.smooth]+Math.abs(d)*0.04);
+    this.h=(this.h+d*a+360)%360; this.b+= (b-this.b)*0.3; return this;
+  }
+};
+
+/* ================= 6. MAPPER (heading/tilt -> note) ================= */
+const Mapper = {
+  chordOn(){ return cfg.play==='chords'; },
+  count(){ return this.chordOn() ? Chords.groups[S.q].length : Math.ceil(RANGE/cfg.step); },
+  step(){ return this.chordOn() ? RANGE/this.count() : cfg.step; },
+  base(){ return 12*(cfg.oct+1); },
+  rel(h){ return ((h-S.zero+540)%360)-180; },
+  index(rel){
+    if(rel<0||rel>=RANGE) return -1;
+    const st=this.step(), raw=Math.min(this.count()-1,Math.floor(rel/st)), p=S.idx;
+    if(p>=0 && raw!==p && Math.abs(rel-(p+0.5)*st) < (0.5+HYST)*st) return p;   // stay on old note near borders
+    return raw;
+  },
+  accidental(tilt){
+    if(this.chordOn() || cfg.acc==='off' || cfg.layout!=='natural') return 0;
+    if(cfg.acc==='zone' || S.slider) return S.zone;
+    const th=cfg.tiltTh, a=S.acc;
+    if(a>0) return tilt>th-4 ? 1 : 0;
+    if(a<0) return tilt<-(th-4) ? -1 : 0;
+    return tilt>th ? 1 : tilt<-th ? -1 : 0;
+  },
+  describe(idx,acc){
+    if(this.chordOn()) return Chords.describe(idx);
+    let d;
+    if(cfg.layout==='natural'){
+      const K=KEYS[cfg.key|0]||KEYS[0], deg=idx%7, oct=Math.floor(idx/7), L=(K.letter+deg)%7, wrap=(K.letter+deg>=7)?1:0;
+      const ks=KSIG[K.sig][L], al=ks+acc, sym=al===0?'':(al===1?'♯':(al===-1?'♭':(al>1?'♯♯':'♭♭')));
+      d={midi:this.base()+WHITE[K.letter]+K.ra+MAJOR[deg]+12*oct+acc, li:L, acc:acc, ks:ks, deg:deg, pn:LET[L]+sym, name:LET[L]+sym+(Math.floor(this.base()/12)-1+oct+wrap)};
+    } else {
+      const midi=this.base()+idx, pc=midi%12, blk=[1,3,6,8,10].indexOf(pc)>=0;
+      d={midi:midi, li:LET.indexOf(NAMES[blk?pc-1:pc][0]), acc:blk?1:0, name:NAMES[pc]+(Math.floor(midi/12)-1), pc:pc};
+    }
+    d.notes=[d.midi]; d.key=d.midi; return d;
+  },
+  freq(m){ return 440*Math.pow(2,(m-69)/12); }
+};
+
+/* ================= 6b. CHORDS (top-40 list, capo, guitar shapes / piano voicing, max 5 notes) ================= */
+/*CHORDS-START*/
+const CHORD_LIST = 'C G Am F D Em A E Dm Bm F#m C#m G#m B C7 G7 D7 A7 E7 Am7 Em7 Dm7 Bm7 F#m7 Cmaj7 Gmaj7 Fmaj7 Amaj7 Bmaj7 C#maj7 Dmaj7 Emaj7 F#7 B7 C#7 Asus4 Dsus4 Esus4 Gsus4 Bsus4'.split(' ');
+const CH_Q = [['','Maj',[0,4,7]],['m','Min',[0,3,7]],['7','7',[0,4,7,10]],['m7','m7',[0,3,7,10]],['maj7','maj7',[0,4,7,11]],['sus4','sus4',[0,5,7]]];   // strip order
+const SHAPE = {C:'x32010',G:'320003',Am:'x02210',F:'133211',D:'xx0232',Em:'022000',A:'x02220',E:'022100',Dm:'xx0231',Bm:'x24432','F#m':'244222','C#m':'x46654','G#m':'466444',B:'x24442',
+  C7:'x32310',G7:'320001',D7:'xx0212',A7:'x02020',E7:'020100',Am7:'x02010',Em7:'022030',Dm7:'xx0211',Bm7:'x20202','F#m7':'202222',
+  Cmaj7:'x32000',Gmaj7:'320002',Fmaj7:'xx3210',Amaj7:'x02120',Bmaj7:'x24342','C#maj7':'x46564',Dmaj7:'xx0222',Emaj7:'021100','F#7':'242322',B7:'x21202','C#7':'x46464',
+  Asus4:'x02230',Dsus4:'xx0233',Esus4:'022200',Gsus4:'330013',Bsus4:'x24452'};   // frets low E to high e, x = muted
+const OPEN = [40,45,50,55,59,64], ROOT_PC = {C:0,D:2,E:4,F:5,G:7,A:9,B:11};
+const Chords = {
+  groups:null,
+  init(){
+    this.groups=CH_Q.map(()=>[]);
+    CHORD_LIST.forEach(name=>{ const m=/^([A-G]#?)(.*)$/.exec(name), q=CH_Q.findIndex(x=>x[0]===m[2]), pc=ROOT_PC[m[1].charAt(0)]+(m[1].length>1?1:0);
+      this.groups[q].push({name:name,pc:pc,q:q,shape:SHAPE[name]}); });
+    this.groups.forEach(g=>g.sort((a,b)=>a.pc-b.pc));
+    this.groups.push([].concat.apply([],this.groups));                       // index 6 = all 40 in one list (sections in strip order)                       // low root -> high root, like a keyboard
+  },
+  notes(c){                                          // sounding MIDI notes (capo shifts everything up)
+    const capo=cfg.capo|0, up=12*(cfg.coct|0); let m=[];
+    if(cfg.voicing==='guitar'){
+      for(let i=0;i<6;i++){ const f=c.shape.charAt(i); if(f!=='x') m.push(OPEN[i]+parseInt(f,10)+capo+up); }
+      while(m.length>5){ let k=m.length-1; for(let i=m.length-1;i>0;i--){ if(m.slice(0,i).some(x=>(m[i]-x)%12===0)){ k=i; break; } } m.splice(k,1); }   // drop highest duplicate note
+    } else { const r=48+((c.pc+capo)%12)+up; m=[r-12].concat(CH_Q[c.q][2].map(x=>r+x)); }                                                             // bass + close voicing
+    return m;
+  },
+  describe(idx){
+    const c=this.groups[S.q][idx], capo=cfg.capo|0, nm=NAMES[c.pc], notes=this.notes(c);
+    return {name:c.name, li:LET.indexOf(nm.charAt(0)), acc:nm.length>1?1:0, chord:true, notes:notes, midi:notes[0],
+      key:c.name+'|'+capo+cfg.voicing+'|'+(cfg.coct|0), sub:capo?('capo '+capo+' → '+NAMES[(c.pc+capo)%12]+CH_Q[c.q][0]):''};
+  },
+  setGroup(q){ S.q=q; S.idx=-1; Gl.build(); View.buildLabels(); if(S.slider) SL.reset(); View.qsPaint(); Core.update(); }
+};
+/*CHORDS-END*/
+
+/* ================= 7. SYNTH (Web Audio, mono voice, no samples) ================= */
+function silentWav(){
+  const n=800,b=new ArrayBuffer(44+n*2),v=new DataView(b),w=(o,s)=>{for(let i=0;i<s.length;i++)v.setUint8(o+i,s.charCodeAt(i));};
+  w(0,'RIFF');v.setUint32(4,36+n*2,true);w(8,'WAVE');w(12,'fmt ');v.setUint32(16,16,true);v.setUint16(20,1,true);v.setUint16(22,1,true);
+  v.setUint32(24,8000,true);v.setUint32(28,16000,true);v.setUint16(32,2,true);v.setUint16(34,16,true);w(36,'data');v.setUint32(40,n*2,true);
+  return URL.createObjectURL(new Blob([b],{type:'audio/wav'}));
+}
+const Synth = {
+  ctx:null, master:null, voice:null,
+  unlock(){                                          // call inside a tap
+    if(!this.ctx){
+      const C=window.AudioContext||window.webkitAudioContext; if(!C) return;
+      try{ this.ctx=new C({latencyHint:'interactive'}); }catch(e){ this.ctx=new C(); }
+      const x=this.ctx, comp=x.createDynamicsCompressor(); this.master=x.createGain(); this.out=x.createGain();
+      this.master.connect(comp); comp.connect(this.out); this.out.connect(x.destination);
+      this.cmaster=x.createGain(); const comp2=x.createDynamicsCompressor(); this.cpost=x.createGain(); const sat=x.createWaveShaper(), N=1024, cv=new Float32Array(N);
+      for(let i=0;i<N;i++){ const v=i/(N-1)*2-1; cv[i]=Math.tanh(1.2*v)/Math.tanh(1.2); } sat.curve=cv;   // soft limiter: no harsh clipping at high chord level
+      this.cmaster.connect(comp2); comp2.connect(this.cpost); this.cpost.connect(sat); sat.connect(this.out);
+      this.setVol();
+      this.tap=x.createGain(); this.out.connect(this.tap);   // recorder tap (no output until recording)
+    }
+    this.resume();
+    try{ if(navigator.audioSession) navigator.audioSession.type='playback'; }catch(e){}   // iOS: ignore silent switch
+    try{ const a=new window.Audio(silentWav()); a.loop=true; a.play().catch(()=>{}); }catch(e){}
+  },
+  resume(){ if(this.ctx && this.ctx.state!=='running') this.ctx.resume(); },
+  setVol(){ if(!this.master) return; this.master.gain.value=cfg.vol*0.6; this.cmaster.gain.value=cfg.vol*0.6; this.cpost.gain.value=cfg.clev; },
+  start(f){ this.voice=this.build(f,0,1,false); },
+  chord(fs,strum){ const sc=1/Math.sqrt(fs.length); this.voice={multi:fs.map((f,i)=>this.build(f,i*strum,sc,fs.length>=5,true)).filter(Boolean)}; },   // strum = seconds between notes
+  build(f,delay,scale,lite,bus){
+    const c=this.ctx; if(!c) return null; this.resume();
+    const I=INST[cfg.inst], t=c.currentTime+delay, env=c.createGain(), lp=c.createBiquadFilter(), oscs=[];
+    lp.type='lowpass'; lp.frequency.value=I.lp; lp.Q.value=0.5; env.connect(lp); lp.connect(bus?this.cmaster:this.master);
+    (lite?I.p.slice(0,3):I.p).forEach(p=>{ const o=c.createOscillator(), g=c.createGain(); o.type=p[0]; o.frequency.value=f*p[1]; if(p[3]) o.detune.value=p[3]; g.gain.value=p[2]*scale; o.connect(g); g.connect(env); o.start(t); oscs.push({o:o,r:p[1]}); });
+    let lfo=null;
+    if(I.vib){ lfo=c.createOscillator(); lfo.frequency.value=5.2; const lg=c.createGain(); lg.gain.value=I.vib; lfo.connect(lg); oscs.forEach(x=>lg.connect(x.o.detune)); lfo.start(t); }
+    env.gain.setValueAtTime(0,t); env.gain.linearRampToValueAtTime(1,t+I.a); if(I.d) env.gain.setTargetAtTime(I.s,t+I.a,I.d);
+    return {env:env,lp:lp,oscs:oscs,lfo:lfo,I:I};
+  },
+  glide(f){ const v=this.voice; if(!v) return; const t=this.ctx.currentTime; v.oscs.forEach(x=>x.o.frequency.setTargetAtTime(f*x.r,t,0.035)); },
+  retrigger(f){ this.stop(0.03); this.start(f); },
+  stop(r){ const v=this.voice; this.voice=null; if(!v) return; (v.multi||[v]).forEach(x=>this.release(x,r)); },
+  release(v,r){
+    const c=this.ctx, t=c.currentTime, g=v.env.gain; r=r||v.I.r;
+    if(g.cancelAndHoldAtTime) g.cancelAndHoldAtTime(t); else { g.cancelScheduledValues(t); g.setValueAtTime(g.value,t); }
+    g.setTargetAtTime(0,t,r/3);
+    const end=t+r+0.05; v.oscs.forEach(x=>x.o.stop(end)); if(v.lfo) v.lfo.stop(end);
+    setTimeout(()=>{ try{ v.env.disconnect(); v.lp.disconnect(); }catch(e){} }, (r+0.2)*1000);
+  }
+};
+
+/* ================= 8. PLAYER (decides when sound is on; one place only) ================= */
+const Player = {
+  playing:false, key:'', notes:[],
+  sync(){
+    const n=S.note, want=!!n && (cfg.mode==='auto' ? !S.paused : S.held);
+    if(want && !this.playing){ this.play(n,false); this.playing=true; }
+    else if(want && this.key!==n.key){ this.play(n,true); }
+    else if(!want && this.playing){ Synth.stop(); this.playing=false; this.key=''; this.notes=[]; Rec.note([],0); }
+  },
+  play(n,change){
+    const strum = n.chord ? (cfg.voicing==='guitar' ? 0.018 : 0.004) : 0;
+    this.key=n.key; this.notes=n.notes; Rec.note(n.notes,strum);
+    if(n.chord){ if(change) Synth.stop(0.04); Synth.chord(n.notes.map(Mapper.freq),strum); }
+    else if(!change) Synth.start(Mapper.freq(n.notes[0]));
+    else { const f=Mapper.freq(n.notes[0]); (cfg.mode==='auto' && !cfg.glide) ? Synth.retrigger(f) : Synth.glide(f); }
+  }
+};
+
+/* ================= 9. CORE (sensor -> state -> player) ================= */
+const Core = {
+  update(){
+    if(S.slider){
+      S.rel=SL.rel(); S.acc=Mapper.accidental(0); S.idx=Math.min(Mapper.count()-1,Math.floor(S.rel/Mapper.step()));   // no hysteresis for sliders
+      S.note=S.idx>=0?Mapper.describe(S.idx,S.acc):null;
+    } else if(S.zero===null){ S.note=null; S.rel=0; }
+    else {
+      S.rel = Mapper.rel(S.heading);
+      S.acc = Mapper.accidental(S.beta-S.beta0);
+      S.idx = Mapper.index(S.rel);
+      S.note = S.idx>=0 ? Mapper.describe(S.idx,S.acc) : null;
+    }
+    Player.sync(); S.dirty=true;
+  },
+  onSensor(h,b){
+    S.lastT=performance.now(); Filter.push(h,b); S.heading=Filter.h; S.beta=Filter.b;
+    if(S.slider) return;
+    if(Ov.cur==='calib') View.calibLive();
+    Core.update();
+  }
+};
+
+/* ================= 10. GL RENDERER (fan of keys + needle; WebGL1) ================= */
+const Gl = {
+  gl:null, prog:null, segBuf:null, ndlBuf:null, loc:{}, seg:null, w:0, h:0, cx:0, cy:0, Ro:0, Ri:0, key:'',
+  init(cv){
+    const gl=this.gl=cv.getContext('webgl',{antialias:true,alpha:true})||cv.getContext('experimental-webgl'); if(!gl) return false;
+    const vs='attribute vec2 p;attribute vec3 c;uniform vec2 res;uniform vec2 cen;uniform float rot;varying vec3 v;void main(){vec2 q=p-cen;float s=sin(rot),k=cos(rot);q=vec2(q.x*k-q.y*s,q.x*s+q.y*k)+cen;v=c;gl_Position=vec4(q.x/res.x*2.-1.,1.-q.y/res.y*2.,0.,1.);}';
+    const fs='precision mediump float;varying vec3 v;void main(){gl_FragColor=vec4(v,1.);}';
+    const mk=(t,s)=>{ const o=gl.createShader(t); gl.shaderSource(o,s); gl.compileShader(o); return o; };
+    const pr=this.prog=gl.createProgram(); gl.attachShader(pr,mk(gl.VERTEX_SHADER,vs)); gl.attachShader(pr,mk(gl.FRAGMENT_SHADER,fs)); gl.linkProgram(pr); gl.useProgram(pr);
+    ['res','cen','rot'].forEach(k=>this.loc[k]=gl.getUniformLocation(pr,k));
+    this.loc.p=gl.getAttribLocation(pr,'p'); this.loc.c=gl.getAttribLocation(pr,'c');
+    this.segBuf=gl.createBuffer(); this.ndlBuf=gl.createBuffer(); return true;
+  },
+  resize(cv){
+    const dpr=Math.min(window.devicePixelRatio||1,2); this.w=cv.clientWidth; this.h=cv.clientHeight;
+    cv.width=Math.round(this.w*dpr); cv.height=Math.round(this.h*dpr); this.gl.viewport(0,0,cv.width,cv.height);
+    this.cx=this.w/2; this.cy=this.h*0.9; this.Ro=Math.max(40,Math.min((this.w-(S.slider?150:0))*0.47,this.cy*0.96)); this.Ri=this.Ro*0.6;
+    this.build();
+  },
+  pt(deg,r){ const a=deg*Math.PI/180; return [this.cx+r*Math.sin(a), this.cy-r*Math.cos(a)]; },
+  build(){                                           // geometry: re-run on resize or layout/step change
+    const n=Mapper.count(), st=Mapper.step(), g=0.5; this.seg=new Float32Array(n*6*5);
+    for(let i=0;i<n;i++){
+      const a0=i*st-RANGE/2+g, a1=Math.min(RANGE,(i+1)*st)-RANGE/2-g;
+      const q=[this.pt(a0,this.Ri),this.pt(a0,this.Ro),this.pt(a1,this.Ro),this.pt(a1,this.Ri)], o=[0,1,2,0,2,3];
+      for(let k=0;k<6;k++){ const P=q[o[k]], b=(i*6+k)*5; this.seg[b]=P[0]; this.seg[b+1]=P[1]; }
+    }
+    const t=this.pt(0,this.Ro*1.03), gl=this.gl, c=Col.theme().seal, cy=this.cy-this.Ri*0.7;
+    gl.bindBuffer(gl.ARRAY_BUFFER,this.ndlBuf);
+    gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([t[0],t[1],c[0],c[1],c[2], this.cx-3.5,cy,c[0],c[1],c[2], this.cx+3.5,cy,c[0],c[1],c[2]]),gl.STATIC_DRAW);
+    this.key=''; this.paint();
+  },
+  paint(){                                           // colors: rest = soft tint, armed = mid, sounding = full color
+    const T=Col.theme(), n=Mapper.count(), snd=Player.playing, w=[1,1,1];
+    for(let i=0;i<n;i++){
+      const d=Mapper.describe(i,0); let base=Col.hex(PAL[d.li]); if(d.acc||d.ks) base=Col.mix(base,T.ink,0.35);
+      let c=Col.mix(base,T.bg,0.72);
+      if(i===S.idx){ if(snd){ c=base; if(S.acc>0) c=Col.mix(base,T.ink,0.3); else if(S.acc<0) c=Col.mix(base,w,0.3); } else c=Col.mix(base,T.bg,0.4); }
+      for(let k=0;k<6;k++){ const b=(i*6+k)*5; this.seg[b+2]=c[0]; this.seg[b+3]=c[1]; this.seg[b+4]=c[2]; }
+    }
+    const gl=this.gl; gl.bindBuffer(gl.ARRAY_BUFFER,this.segBuf); gl.bufferData(gl.ARRAY_BUFFER,this.seg,gl.DYNAMIC_DRAW);
+  },
+  draw(){
+    const gl=this.gl, L=this.loc, k=[S.idx,S.acc,Player.playing,cfg.layout,cfg.step,cfg.play,S.q].join();
+    if(k!==this.key){ this.key=k; this.paint(); }
+    gl.clearColor(0,0,0,0); gl.clear(gl.COLOR_BUFFER_BIT);
+    gl.uniform2f(L.res,this.w,this.h); gl.uniform2f(L.cen,this.cx,this.cy);
+    const bind=b=>{ gl.bindBuffer(gl.ARRAY_BUFFER,b); gl.enableVertexAttribArray(L.p); gl.enableVertexAttribArray(L.c); gl.vertexAttribPointer(L.p,2,gl.FLOAT,false,20,0); gl.vertexAttribPointer(L.c,3,gl.FLOAT,false,20,8); };
+    bind(this.segBuf); gl.uniform1f(L.rot,0); gl.drawArrays(gl.TRIANGLES,0,Mapper.count()*6);
+    bind(this.ndlBuf); gl.uniform1f(L.rot,(S.rel-RANGE/2)*Math.PI/180); gl.drawArrays(gl.TRIANGLES,0,3);
+  }
+};
+
+/* ================= 11. VIEW (DOM readouts, labels, render loop) ================= */
+const View = {
+  c:{},
+  init(){ ['note','deg','stat','padT','labels','pad','bLock','cLive','accs'].forEach(k=>this.c[k]=$(k)); this.zs=document.querySelectorAll('#pad .z'); },
+  set(id,v){ const e=this.c[id]; if(e.textContent!==v) e.textContent=v; },
+  buildLabels(){                                     // static DOM labels; rebuild on layout/step/mode/resize
+    const L=this.c.labels, n=Mapper.count(), st=Mapper.step(), ch=Mapper.chordOn(), rm=(Gl.Ro+Gl.Ri)/2; L.innerHTML='';
+    const add=(txt,x,y,cls,rot)=>{ const d=document.createElement('div'); d.className='lb '+(cls||''); if(rot!==undefined) d.style.transform='translate(-50%,-50%) rotate('+rot+'deg)'; d.textContent=txt; d.style.left=x+'px'; d.style.top=y+'px'; L.appendChild(d); };
+    for(let i=0;i<n;i++){
+      const d=Mapper.describe(i,0); let txt;
+      if(ch) txt=d.name;
+      else { if(d.acc) continue; const isC=cfg.layout==='natural'?d.deg===0:d.pc===0; if(!(cfg.step>=8||isC)) continue; txt=isC?d.name:(d.pn||LET[d.li]); }
+      const a=(i+0.5)*st-RANGE/2, p=Gl.pt(a,rm), dense=ch&&n>12;
+      add(txt,p[0],p[1],dense?'sm':'',dense?(a>=0?a-90:a+90):undefined);
+    }
+    if(ch&&n>12){ let o=0; CH_Q.forEach((q,g)=>{ const len=Chords.groups[g].length, pp=Gl.pt((o+len/2)*st-RANGE/2,Gl.Ro*1.07); add(q[1],pp[0],pp[1],'end'); o+=len; }); }
+    const e0=Gl.pt(-RANGE/2,Gl.Ro*1.0), e1=Gl.pt(RANGE/2,Gl.Ro*1.0);
+    add('0°',e0[0]+2,e0[1]+16,'end'); add(RANGE+'°',e1[0]-2,e1[1]+16,'end');
+  },
+  slUI(){ document.body.classList.toggle('oneL',cfg.sl==='oneL'); document.body.classList.toggle('oneR',cfg.sl==='oneR'); },
+  octPaint(){ const K=cfg.layout==='natural'?KEYS[cfg.key|0]:KEYS[0]; $('oLab').textContent=K.name+cfg.oct; },
+  qsPaint(){ [].forEach.call($('qs').children,(x,i)=>x.classList.toggle('on',i===S.q)); },
+  modeUI(){ const ch=Mapper.chordOn(); document.body.classList.toggle('ch',ch); $('bChord').textContent=ch?'Notes':'Chords'; this.qsPaint(); this.octPaint(); if(Boot.fit) Boot.fit(); },
+  calibLive(){ this.set('cLive','Facing '+Math.round(S.heading)+'°   Tilt '+Math.round(S.beta)+'°'); },
+  render(){
+    if(S.dirty){
+      S.dirty=false; const n=S.note;
+      this.set('note', n?n.name:'–');
+      const dg = S.zero===null ? '–' : (S.rel>=-0.5&&S.rel<RANGE ? Math.round(Math.max(0,S.rel))+'°' : 'out of range');
+      this.set('deg', dg + (n&&n.sub ? '  ·  '+n.sub : ''));
+      [].forEach.call(this.c.accs.children,(s,i)=>s.classList.toggle('on', i===(S.acc+1)));
+      this.c.pad.classList.toggle('down', cfg.mode==='press' ? S.held : !S.paused);
+      const za = !Mapper.chordOn() && cfg.layout==='natural' && (cfg.acc==='zone' || (S.slider && cfg.acc!=='off'));
+      this.c.pad.classList.toggle('noacc', !za);
+      [].forEach.call(this.zs,(z,i)=>z.classList.toggle('on', S.touch && S.zone===i-1));
+      this.set('padT', cfg.mode==='press' ? 'Hold to play' : (S.paused ? 'Tap to resume' : 'Tap to pause'));
+      Gl.draw();
+    }
+    const live = S.slider || performance.now()-S.lastT<2500;
+    this.set('stat', S.src ? (live ? '● '+S.src : '○ No sensor signal') : '');
+    requestAnimationFrame(()=>View.render());
+  }
+};
+
+/* ================= 12. OVERLAY + TOAST ================= */
+const Ov = {
+  cur:null,
+  show(id){ this.cur=id; $('ov').classList.add('on'); ['gate','calib','confirm','save'].forEach(k=>$('p-'+k).classList.toggle('on',k===id)); },
+  hide(){ this.cur=null; $('ov').classList.remove('on'); }
+};
+let toastT; function toast(m){ const t=$('toast'); t.textContent=m; t.classList.add('on'); clearTimeout(toastT); toastT=setTimeout(()=>t.classList.remove('on'),1800); }
+
+/* ================= 13. CALIBRATION (set zero, lock, confirm) ================= */
+const Calib = {
+  open(){ View.calibLive(); Ov.show('calib'); },
+  commit(){ S.zero=Filter.h; S.beta0=Filter.b; S.idx=-1; S.acc=0; Ov.hide(); Core.update(); toast('Zero set'); },
+  request(){                                         // Calibrate button
+    if(S.zero===null) return this.open();
+    if(cfg.locked) return toast('Locked. Unlock to recalibrate.');
+    Ov.show('confirm');
+  },
+  toggleLock(){ cfg.locked=!cfg.locked; Store.save(); this.paintLock(); toast(cfg.locked?'Calibration locked':'Calibration unlocked'); },
+  paintLock(){ View.c.bLock.textContent=cfg.locked?'Locked':'Lock'; View.c.bLock.classList.toggle('on',cfg.locked); }
+};
+
+/* ================= 13b. RECORDER (WAV + MIDI, offline; ScriptProcessor works on iOS 12 and Android) ================= */
+/*WAVMIDI-START*/
+function wavBlob(chunks,total,rate){
+  const buf=new ArrayBuffer(44+total*2), d=new DataView(buf), w=(o,t)=>{ for(let i=0;i<t.length;i++) d.setUint8(o+i,t.charCodeAt(i)); };
+  w(0,'RIFF'); d.setUint32(4,36+total*2,true); w(8,'WAVE'); w(12,'fmt '); d.setUint32(16,16,true); d.setUint16(20,1,true); d.setUint16(22,1,true);
+  d.setUint32(24,rate,true); d.setUint32(28,rate*2,true); d.setUint16(32,2,true); d.setUint16(34,16,true); w(36,'data'); d.setUint32(40,total*2,true);
+  const out=new Int16Array(buf,44,total); let o=0; chunks.forEach(c=>{ out.set(c,o); o+=c.length; });
+  return new Blob([buf],{type:'audio/wav'});
+}
+function vlq(n){ const b=[n&127]; n>>=7; while(n>0){ b.unshift((n&127)|128); n>>=7; } return b; }
+function midiBlob(ev,gm){                            // SMF type 0, 480 ticks/quarter, 120 bpm -> 960 ticks/s
+  const tr=[], push=(dt,bytes)=>{ vlq(dt).forEach(x=>tr.push(x)); bytes.forEach(x=>tr.push(x)); }; let last=0;
+  push(0,[0xFF,0x51,0x03,0x07,0xA1,0x20]); push(0,[0xC0,gm]);
+  ev.forEach(e=>{ const tk=Math.round(e.t*960); push(tk-last,[e.on?0x90:0x80,e.m,e.on?100:0]); last=tk; });
+  push(0,[0xFF,0x2F,0x00]); const n=tr.length;
+  const h=[0x4D,0x54,0x68,0x64,0,0,0,6,0,0,0,1,0x01,0xE0,0x4D,0x54,0x72,0x6B,(n>>>24)&255,(n>>>16)&255,(n>>>8)&255,n&255];
+  return new Blob([new Uint8Array(h.concat(tr))],{type:'audio/midi'});
+}
+/*WAVMIDI-END*/
+const GM = {piano:0,organ:19,flute:73,strings:48,bell:14,synth:80,guitar:24}, REC_MAX = 300;   // General MIDI programs; auto-stop at 5 min
+const Rec = {
+  on:false, t0:0, cur:[], ev:[], chunks:[], total:0, proc:null, mute:null, inst:'piano', timer:0, wav:null, mid:null,
+  note(ms,strum){                                    // Player calls this on every sound change (ms = array of MIDI notes)
+    if(!this.on) return; const t=Synth.ctx.currentTime-this.t0;
+    this.cur.forEach(m=>this.ev.push({t:t,on:0,m:m})); this.cur=[];
+    (ms||[]).forEach((m,i)=>{ m=Math.max(0,Math.min(127,m)); this.ev.push({t:t+i*(strum||0),on:1,m:m}); this.cur.push(m); });
+  },
+  start(){
+    const c=Synth.ctx; if(!c||!Synth.tap) return toast('Audio not ready'); Synth.resume();
+    this.chunks=[]; this.total=0; this.ev=[]; this.cur=[]; this.inst=cfg.inst;
+    const p=this.proc=c.createScriptProcessor(4096,1,1), z=this.mute=c.createGain(); z.gain.value=0;
+    p.onaudioprocess=e=>{ if(!Rec.on) return; const f=e.inputBuffer.getChannelData(0), n=f.length, q=new Int16Array(n);
+      for(let i=0;i<n;i++){ let v=f[i]; v=v<-1?-1:(v>1?1:v); q[i]=v<0?v*32768:v*32767; } Rec.chunks.push(q); Rec.total+=n; };
+    Synth.tap.connect(p); p.connect(z); z.connect(c.destination);
+    this.t0=c.currentTime; this.on=true; if(Player.playing) this.note(Player.notes,0);
+    $('bRec').classList.add('on'); this.tick(); this.timer=setInterval(()=>Rec.tick(),250);
+  },
+  tick(){
+    const sec=this.total/Synth.ctx.sampleRate, m=Math.floor(sec/60), s=Math.floor(sec%60);
+    $('bRec').textContent='■ '+m+':'+(s<10?'0':'')+s; if(sec>=REC_MAX) this.stop();
+  },
+  stop(){
+    if(!this.on) return; this.note([],0); this.on=false; clearInterval(this.timer);
+    try{ Synth.tap.disconnect(); this.proc.disconnect(); this.mute.disconnect(); }catch(e){}
+    this.proc.onaudioprocess=null; $('bRec').classList.remove('on'); $('bRec').textContent='● Rec';
+    if(this.total<2000){ this.chunks=[]; return toast('Nothing recorded'); }
+    const rate=Synth.ctx.sampleRate; this.ev.sort((a,b)=>(a.t-b.t)||(a.on-b.on));
+    this.wav=wavBlob(this.chunks,this.total,rate); this.mid=this.ev.length?midiBlob(this.ev,GM[this.inst]||0):null;
+    const dur=this.total/rate; this.chunks=[]; Saver.open(dur);
+  }
+};
+const Saver = {                                      // files are built BEFORE the tap so share() runs inside the user gesture
+  stamp(){ const d=new Date(), p=n=>(n<10?'0':'')+n; return d.getFullYear()+p(d.getMonth()+1)+p(d.getDate())+'-'+p(d.getHours())+p(d.getMinutes())+p(d.getSeconds()); },
+  open(dur){
+    const m=Math.floor(dur/60), s=Math.round(dur%60);
+    $('svInfo').textContent='Length '+m+':'+(s<10?'0':'')+s+'  ·  WAV '+(Rec.wav.size/1048576).toFixed(1)+' MB'+(Rec.mid?'  ·  MIDI '+Math.max(1,Math.round(Rec.mid.size/1024))+' KB':'');
+    $('svMid').style.display=Rec.mid?'block':'none'; $('svMsg').textContent=''; this.name='compass-'+this.stamp(); this.saved=false; this.armed=false; $('svClose').textContent='Discard';
+    const au=$('svAudio'); this.playUrl=URL.createObjectURL(Rec.wav); au.src=this.playUrl; au.load(); Ov.show('save');   // instant replay of the take
+  },
+  discard(){                                         // 2-tap until something was saved, then one tap
+    if(!this.saved && !this.armed){ this.armed=true; $('svClose').textContent='Tap again to discard'; clearTimeout(this.armT);
+      this.armT=setTimeout(()=>{ this.armed=false; if(!this.saved) $('svClose').textContent='Discard'; },3000); return; }
+    const au=$('svAudio'); au.pause(); au.removeAttribute('src'); au.load();
+    if(this.playUrl){ URL.revokeObjectURL(this.playUrl); this.playUrl=null; }
+    Rec.wav=null; Rec.mid=null; this.armed=false; Ov.hide();
+  },
+  save(blob,ext){                                    // share sheet -> download (only if supported) -> visible link; never navigates away by itself
+    const name=this.name+ext, msg=$('svMsg'); let file=null; try{ file=new File([blob],name,{type:blob.type}); }catch(e){}
+    const url=URL.createObjectURL(blob), ok=()=>{ this.saved=true; $('svClose').textContent='Done'; };
+    const link=()=>{ msg.textContent=''; const l=document.createElement('a'); l.href=url; l.download=name; l.target='_blank'; l.rel='noopener'; l.textContent='If nothing saved, tap here: '+name; msg.appendChild(l); };
+    const dl=()=>{ ok(); link(); if(!('download' in document.createElement('a'))) return;
+      const a=document.createElement('a'); a.href=url; a.download=name; a.style.display='none'; document.body.appendChild(a); a.click(); setTimeout(()=>{ if(a.parentNode) a.parentNode.removeChild(a); },1500); };
+    if(file && navigator.share && navigator.canShare && navigator.canShare({files:[file]}))
+      navigator.share({files:[file],title:name}).then(()=>{ msg.textContent='Saved / shared'; ok(); }).catch(e=>{ if(!e||e.name!=='AbortError') dl(); });
+    else dl();
+  }
+};
+
+/* ================= 14. SETTINGS (one table drives the sheet) ================= */
+const ROWS = [
+  {k:'inst',  l:'Instrument', o:Object.keys(INST).map(k=>[k,INST_LABEL[k]])},
+  {k:'mode',  l:'Play mode', o:[['press','Press to play'],['auto','Always on']]},
+  {k:'sl',    l:'Slider layout (touch the slider to play in one-hand)', o:[['two','Two sliders'],['oneL','One hand: left'],['oneR','One hand: right']]},
+  {k:'play',  l:'Play', o:[['notes','Notes'],['chords','Chords']]},
+  {k:'voicing',l:'Chord voicing', o:[['guitar','Guitar shapes'],['piano','Piano']]},
+  {k:'capo',  l:'Capo (chords only)', o:[[0,'None'],[1,'1'],[2,'2'],[3,'3'],[4,'4'],[5,'5'],[6,'6'],[7,'7']]},
+  {k:'coct',  l:'Chord pitch (octave shift)', o:[[0,'Low'],[1,'Mid'],[2,'High']]},
+  {k:'clev',  l:'Chord level (raise if chords sound quiet)', o:[[1,'×1'],[1.5,'×1.5'],[2,'×2'],[3,'×3']]},
+  {k:'glide', l:'Always-on note change', o:[[true,'Slide'],[false,'Steps']]},
+  {k:'step',  l:'Degrees per note (10 default, 4 = fine)', o:[[12,'12°'],[10,'10°'],[8,'8°'],[6,'6°'],[4,'4°']]},
+  {k:'key',   l:'Key: major scale with its ♯/♭ built in (Scale layout)', o:KEYS.map((k,i)=>[i,k.name])},
+  {k:'layout',l:'Layout', o:[['scale','Scale'],['chromatic','Chromatic']].map(o=>[o[0]==='scale'?'natural':o[0],o[1]])},
+  {k:'acc',   l:'♯ / ♭ method', o:[['zone','Pad zones'],['tilt','Tilt'],['off','Off']]},
+  {k:'tiltTh',l:'Tilt trigger', o:[[8,'Sensitive'],[12,'Normal'],[16,'Firm']]},
+  {k:'oct',   l:'Start octave', o:[[1,'C1'],[2,'C2'],[3,'C3'],[4,'C4'],[5,'C5']]},
+  {k:'smooth',l:'Response', o:[[0,'Smooth'],[1,'Balanced'],[2,'Fast']]}
+];
+const Settings = {
+  build(){
+    const box=$('rows'); box.innerHTML='';
+    ROWS.forEach(r=>{
+      const row=document.createElement('div'); row.className='row'; row.innerHTML='<label>'+r.l+'</label>'; const seg=document.createElement('div'); seg.className='seg';
+      r.o.forEach(o=>{ const b=document.createElement('button'); b.className='btn'+(cfg[r.k]===o[0]?' on':''); b.textContent=o[1];
+        b.onclick=()=>{ cfg[r.k]=o[0]; Store.save(); [].forEach.call(seg.children,x=>x.classList.remove('on')); b.classList.add('on'); Settings.apply(r.k); }; seg.appendChild(b); });
+      row.appendChild(seg); box.appendChild(row);
+    });
+    const v=document.createElement('div'); v.className='row'; v.innerHTML='<label>Volume</label><input type="range" min="0" max="1" step="0.05">';
+    const inp=v.querySelector('input'); inp.value=cfg.vol; inp.oninput=()=>{ cfg.vol=+inp.value; Synth.setVol(); Store.save(); }; box.appendChild(v);
+  },
+  set(k,v){ cfg[k]=v; Store.save(); this.build(); this.apply(k); },
+  apply(k){
+    if(k==='step'&&cfg.step===4&&cfg.oct>2){ cfg.oct=2; Store.save(); Settings.build(); }   // fine step starts at C2
+    if(Player.playing && (k==='play'||k==='voicing'||k==='capo'||k==='coct'||k==='inst'||k==='layout'||k==='oct'||k==='key'||k==='step')){ Synth.stop(0.03); Player.playing=false; Player.key=''; Player.notes=[]; Rec.note([],0); }
+    if(k==='step'||k==='layout'||k==='oct'||k==='key'||k==='play'){ S.idx=-1; Gl.build(); View.buildLabels(); if(S.slider){ if(k==='oct'||k==='key') SL.layout(); else SL.reset(); } }   // octave shift keeps slider thumbs where they are
+    if(k==='play') View.modeUI();
+    if(k==='sl'){ View.slUI(); if(S.slider) SL.reset(); }
+    if(k==='mode'){ S.padDown=false; S.slDown=false; S.held=false; S.paused=false; }
+    if(k==='clev') Synth.setVol();
+    View.octPaint(); Core.update();
+  },
+  toggle(on){ $('sheet').classList.toggle('on',on); }
+};
+
+/* ================= 14b. DRAG (pointer events, touch fallback for iOS 12) ================= */
+const Drag = {
+  bind(el,f){
+    let act=false, id=null;
+    if(window.PointerEvent){
+      el.addEventListener('pointerdown',e=>{ e.preventDefault(); act=true; try{el.setPointerCapture(e.pointerId);}catch(x){} if(f.down) f.down(e.clientX,e.clientY); });
+      el.addEventListener('pointermove',e=>{ if(act&&f.move) f.move(e.clientX,e.clientY); });
+      const u=()=>{ if(act){ act=false; if(f.up) f.up(); } }; el.addEventListener('pointerup',u); el.addEventListener('pointercancel',u);
+    } else {
+      const find=e=>{ for(let i=0;i<e.touches.length;i++) if(e.touches[i].identifier===id) return e.touches[i]; return null; };
+      el.addEventListener('touchstart',e=>{ e.preventDefault(); if(act) return; const t=e.changedTouches[0]; act=true; id=t.identifier; if(f.down) f.down(t.clientX,t.clientY); },{passive:false});
+      el.addEventListener('touchmove',e=>{ e.preventDefault(); const t=find(e); if(act&&t&&f.move) f.move(t.clientX,t.clientY); },{passive:false});
+      const u=e=>{ e.preventDefault(); if(act&&!find(e)){ act=false; if(f.up) f.up(); } };
+      el.addEventListener('touchend',u,{passive:false}); el.addEventListener('touchcancel',u,{passive:false});
+    }
+  }
+};
+
+/* ================= 14c. SLIDERS (compass bypass: left = low half, right = high half, split lands on a C) ================= */
+const SL = {
+  act:'L', v:{L:0,R:0},
+  split(){ if(Mapper.chordOn()) return Math.max(1,Math.floor(Mapper.count()/2)); const n=Mapper.count(), u=cfg.layout==='natural'?7:12; let k=Math.round((n/2)/u)*u; if(k<u) k=u; if(k>=n) k=Math.max(1,Math.floor(n/2)); return k; },  // first note index of right slider (a C)
+  one(){ return cfg.sl==='oneL'?'L':(cfg.sl==='oneR'?'R':''); },   // one-hand mode: side that holds the single full-range slider
+  rel(){ const o=this.one(); if(o) return Math.min(RANGE-0.01,this.v[o]*RANGE);
+    const sd=this.split()*Mapper.step();               // degree where right half starts; both sliders: bottom=low, top=high
+    if(this.act==='R') return Math.min(RANGE-0.01,sd+this.v.R*(RANGE-sd));
+    return Math.min(sd-0.01,this.v.L*sd); },
+  layout(){ const n=Mapper.count(), k=this.split(), nm=i=>Mapper.describe(i,0).name, set=(s,c,t)=>{ $('s'+s).querySelector(c).textContent=t; };
+    const o=this.one(); if(o){ set(o,'.lo',nm(0)); set(o,'.hi',nm(n-1)); return; }
+    set('L','.lo',nm(0)); set('L','.hi',nm(k-1)); set('R','.lo',nm(k)); set('R','.hi',nm(n-1)); },
+  place(s){ const el=$('s'+s); el.querySelector('i').style.bottom=(4+this.v[s]*(el.clientHeight-56))+'px'; },
+  move(s,v){ if(this.act && this.act!==s){ const o=this.act; this.v[o]=0; this.place(o); } this.act=s; this.v[s]=v; this.place(s); Core.update(); },
+  reset(){ this.act=(this.one()||'L'); this.v.L=0; this.v.R=0; this.place('L'); this.place('R'); this.layout(); },
+  fromY(s,el,y){ const r=el.getBoundingClientRect(); this.move(s,Math.max(0,Math.min(1,1-(y-r.top-28)/(r.height-56)))); },
+  init(){ ['L','R'].forEach(s=>{ const el=$('s'+s); const h=(x,y)=>SL.fromY(s,el,y);
+      Drag.bind(el,{ down:(x,y)=>{ if(SL.one()){ S.slDown=true; Input.heldSync(); } h(x,y); },      // one-hand: touching the slider = press
+                     move:h,
+                     up:()=>{ if(SL.one()){ S.slDown=false; Input.heldSync(); Core.update(); } } }); }); }
+};
+
+/* ================= 15. INPUT (pad touch: zero-delay trigger) ================= */
+const Input = {
+  heldSync(){ S.held = S.padDown || S.slDown; },
+  init(){
+    const pad=View.c.pad;
+    const zoneAt=x=>{ const b=pad.getBoundingClientRect(), f=(x-b.left)/b.width; return f<0.25?-1:(f>0.75?1:0); };   // left = flat, right = sharp
+    Drag.bind(pad,{
+      down:x=>{ Synth.resume(); S.touch=true; S.zone=zoneAt(x); if(cfg.mode==='auto'){ if(S.zone===0) S.paused=!S.paused; } else { S.padDown=true; Input.heldSync(); } Core.update(); },
+      move:x=>{ const z=zoneAt(x); if(z!==S.zone){ S.zone=z; Core.update(); } },
+      up:()=>{ S.touch=false; S.zone=0; S.padDown=false; Input.heldSync(); Core.update(); } });
+    SL.init();
+    const qs=$('qs'), setQ=x=>{ const b=qs.getBoundingClientRect(); const nq=qs.children.length; let q=Math.floor((x-b.left)/b.width*nq); q=Math.max(0,Math.min(nq-1,q)); if(q!==S.q) Chords.setGroup(q); };
+    Drag.bind(qs,{down:setQ,move:setQ});                 // chord-type slider (snaps to 6 groups)
+    $('bChord').onclick=()=>Settings.set('play',cfg.play==='chords'?'notes':'chords');
+    $('oUp').onclick=()=>{ if(cfg.oct<5) Settings.set('oct',cfg.oct+1); };
+    $('oDn').onclick=()=>{ if(cfg.oct>1) Settings.set('oct',cfg.oct-1); };
+    document.addEventListener('visibilitychange',()=>{ if(document.hidden){ S.padDown=false; S.slDown=false; S.held=false; Core.update(); } });
+  }
+};
+
+/* ================= 16. BOOT (gate: no sensor = no app) ================= */
+const Boot = {
+  async start(){
+    Synth.unlock();                                  // audio unlock + iOS silent-switch bypass, inside the tap
+    const btn=$('bStart'); btn.disabled=true; $('gateMsg').textContent='Waiting for compass…';
+    const r=Sensor.got?{ok:true}:await Sensor.request(); btn.disabled=false;
+    if(!r.ok) return this.fail(r.why);
+    try{ if(navigator.wakeLock) navigator.wakeLock.request('screen').catch(()=>{}); }catch(e){}
+    this.setSlider(false); Calib.open();
+  },
+  useSlider(){
+    Synth.unlock();
+    try{ if(navigator.wakeLock) navigator.wakeLock.request('screen').catch(()=>{}); }catch(e){}
+    this.setSlider(true); Ov.hide();
+  },
+  setSlider(on){
+    S.slider=on; document.body.classList.toggle('sl',on);
+    $('bMode').textContent=on?'Compass':'Sliders'; $('bCal').disabled=on; $('bLock').disabled=on;
+    if(on){ S.zero=0; S.acc=0; S.accMan=0; S.src='Manual sliders'; SL.reset(); } else { S.zero=null; S.src=Sensor.src||''; }
+    S.idx=-1; if(Boot.fit) Boot.fit(); Core.update();
+  },
+  fail(why){
+    const m={nosupport:'This browser has no orientation sensor.',
+      denied:'Motion access was denied. iPhone: fully close Safari, reopen, tap Enable and choose Allow. Android: Site settings, Motion sensors, Allow.',
+      nodata:'No compass data received. The phone may lack a magnetometer, or motion access is off in browser settings.'}[why];
+    $('gateMsg').textContent=m+(window.isSecureContext?'':' This page is not in a secure context (https or localhost); most browsers block sensors on file:// pages.');
+    $('bStart').textContent='Try again'; Ov.show('gate');
+  },
+  init(){
+    Store.load(); Chords.init(); View.init(); Settings.build(); Calib.paintLock(); Input.init();
+    const cv=$('cv'); if(!Gl.init(cv)){ $('gateMsg').textContent='WebGL is not available in this browser.'; $('bStart').disabled=true; }
+    else { Boot.fit=()=>{ Gl.resize(cv); View.buildLabels(); S.dirty=true; }; Boot.fit(); window.addEventListener('resize',Boot.fit); window.addEventListener('orientationchange',()=>setTimeout(Boot.fit,250)); }
+    Sensor.onData=Core.onSensor; View.modeUI(); View.slUI();
+    $('bStart').onclick=()=>Boot.start(); $('bSlide').onclick=()=>Boot.useSlider(); $('bMode').onclick=()=>{ if(S.slider) Boot.start(); else Boot.useSlider(); };
+    $('bCal').onclick=()=>Calib.request(); $('bLock').onclick=()=>Calib.toggleLock();
+    $('bSet').onclick=()=>Settings.toggle(true); $('bClose').onclick=()=>Settings.toggle(false);
+    $('cSet').onclick=()=>Calib.commit(); $('cCancel').onclick=()=>{ if(S.zero!==null) Ov.hide(); else toast('Set zero to start'); };
+    $('kYes').onclick=()=>Calib.open(); $('kNo').onclick=()=>Ov.hide();
+    $('bRec').onclick=()=>{ if(Rec.on) Rec.stop(); else Rec.start(); };
+    $('svWav').onclick=()=>Saver.save(Rec.wav,'.wav'); $('svMid').onclick=()=>Saver.save(Rec.mid,'.mid'); $('svClose').onclick=()=>Saver.discard();
+    Ov.show('gate'); View.render();
+  }
+};
+Boot.init();
+</script>
+</body>
+</html>
