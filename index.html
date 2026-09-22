@@ -108,7 +108,7 @@ body.sl .vs{display:block}#sL{left:10px}#sR{right:10px}
 'use strict';
 /* ================= 1. CONFIG (constants + defaults) ================= */
 const RANGE = 180, HYST = 0.2;                       // playable arc (deg), note-border hysteresis
-const DEFAULTS = {inst:'piano',mode:'press',glide:true,step:10,layout:'natural',acc:'zone',tiltTh:12,oct:4,vol:0.8,smooth:1,locked:false,play:'notes',voicing:'guitar',capo:0,clev:2,coct:1,sl:'two',key:0,slplay:'off',rev:0.32};
+const DEFAULTS = {inst:'piano',mode:'press',glide:true,step:10,layout:'natural',acc:'zone',tiltTh:12,oct:4,vol:0.8,smooth:1,locked:false,play:'notes',voicing:'guitar',capo:0,clev:2,coct:1,sl:'two',key:0,slplay:'off',rev:0.32,showKey:true};
 const PAL = ['#E05A4F','#EE9A3A','#EFCB45','#6DB65B','#3FB4B0','#4F86D9','#8A62C4']; // C D E F G A B (swap here to match any palette)
 const SMOOTH_K = [0.14,0.28,0.5];                    // base filter gain per smoothing level
 const LET = 'CDEFGAB', WHITE = [0,2,4,5,7,9,11];
@@ -450,16 +450,18 @@ const Gl = {
   },
   paint(){                                           // colors: rest = soft tint, armed = mid, sounding = full color
     const T=Col.theme(), n=Mapper.count(), snd=Player.playing, w=[1,1,1];
+    const kb=new Set(Object.keys(Keys.voices).map(Number));   // desktop keyboard notes light up too, independently of the main pad/slider note
     for(let i=0;i<n;i++){
       const d=Mapper.describe(i,0); let base=Col.hex(PAL[d.li]); if(d.acc||d.ks) base=Col.mix(base,T.ink,0.35);
       let c=Col.mix(base,T.bg,0.72);
       if(i===S.idx){ if(snd){ c=base; if(S.acc>0) c=Col.mix(base,T.ink,0.3); else if(S.acc<0) c=Col.mix(base,w,0.3); } else c=Col.mix(base,T.bg,0.4); }
+      if(kb.has(i)) c=base;                          // a held keyboard key always shows full colour, on top of any pad/slider highlight rule above
       for(let k=0;k<6;k++){ const b=(i*6+k)*5; this.seg[b+2]=c[0]; this.seg[b+3]=c[1]; this.seg[b+4]=c[2]; }
     }
     const gl=this.gl; gl.bindBuffer(gl.ARRAY_BUFFER,this.segBuf); gl.bufferData(gl.ARRAY_BUFFER,this.seg,gl.DYNAMIC_DRAW);
   },
   draw(){
-    const gl=this.gl, L=this.loc, k=[S.idx,S.acc,Player.playing,cfg.layout,cfg.step,cfg.play,S.q].join();
+    const gl=this.gl, L=this.loc, k=[S.idx,S.acc,Player.playing,cfg.layout,cfg.step,cfg.play,S.q,Object.keys(Keys.voices).sort().join()].join();
     if(k!==this.key){ this.key=k; this.paint(); }
     gl.clearColor(0,0,0,0); gl.clear(gl.COLOR_BUFFER_BIT);
     gl.uniform2f(L.res,this.w,this.h); gl.uniform2f(L.cen,this.cx,this.cy);
@@ -487,6 +489,7 @@ const View = {
     if(ch&&n>12){ let o=0; CH_Q.forEach((q,g)=>{ const len=Chords.groups[g].length, pp=Gl.pt((o+len/2)*st-RANGE/2,Gl.Ro*1.07); add(q[1],pp[0],pp[1],'end'); o+=len; }); }
     const e0=Gl.pt(-RANGE/2,Gl.Ro*1.0), e1=Gl.pt(RANGE/2,Gl.Ro*1.0);
     add('0°',e0[0]+2,e0[1]+16,'end'); add(RANGE+'°',e1[0]-2,e1[1]+16,'end');
+    if(cfg.showKey && cfg.layout==='natural' && !ch){ const kp=Gl.pt(0,Gl.Ro*1.14); add(KEYS[cfg.key|0].name+' major',kp[0],kp[1],'end'); }   // tiny hint, same style as the 0°/180° labels
   },
   slUI(){ document.body.classList.toggle('oneL',cfg.sl==='oneL'); document.body.classList.toggle('oneR',cfg.sl==='oneR'); },
   octPaint(){ const K=cfg.layout==='natural'?KEYS[cfg.key|0]:KEYS[0]; $('oLab').textContent=K.name+cfg.oct; },
@@ -555,15 +558,17 @@ function midiBlob(ev,gm){                            // SMF type 0, 480 ticks/qu
 /*WAVMIDI-END*/
 const GM = {piano:0,organ:19,flute:73,strings:48,bell:14,synth:80,guitar:24,grand:0}, REC_MAX = 300;   // General MIDI programs; auto-stop at 5 min
 const Rec = {
-  on:false, t0:0, cur:[], ev:[], chunks:[], total:0, proc:null, mute:null, inst:'piano', timer:0, wav:null, mid:null,
+  on:false, t0:0, cur:[], kbCur:{}, ev:[], chunks:[], total:0, proc:null, mute:null, inst:'piano', timer:0, wav:null, mid:null,
   note(ms,strum){                                    // Player calls this on every sound change (ms = array of MIDI notes)
     if(!this.on) return; const t=Synth.ctx.currentTime-this.t0;
     this.cur.forEach(m=>this.ev.push({t:t,on:0,m:m})); this.cur=[];
     (ms||[]).forEach((m,i)=>{ m=Math.max(0,Math.min(127,m)); this.ev.push({t:t+i*(strum||0),on:1,m:m}); this.cur.push(m); });
   },
+  kbOn(id,m){ if(!this.on) return; this.kbCur[id]=m; this.ev.push({t:Synth.ctx.currentTime-this.t0,on:1,m:Math.max(0,Math.min(127,m))}); },   // independent ledger: one id per held key, doesn't touch Player's own note()
+  kbOff(id){ if(!this.on) return; const m=this.kbCur[id]; if(m==null) return; delete this.kbCur[id]; this.ev.push({t:Synth.ctx.currentTime-this.t0,on:0,m:m}); },
   start(){
     const c=Synth.ctx; if(!c||!Synth.tap) return toast('Audio not ready'); Synth.resume();
-    this.chunks=[]; this.total=0; this.ev=[]; this.cur=[]; this.inst=cfg.inst;
+    this.chunks=[]; this.total=0; this.ev=[]; this.cur=[]; this.kbCur={}; this.inst=cfg.inst;
     const p=this.proc=c.createScriptProcessor(4096,1,1), z=this.mute=c.createGain(); z.gain.value=0;
     p.onaudioprocess=e=>{ if(!Rec.on) return; const f=e.inputBuffer.getChannelData(0), n=f.length, q=new Int16Array(n);
       for(let i=0;i<n;i++){ let v=f[i]; v=v<-1?-1:(v>1?1:v); q[i]=v<0?v*32768:v*32767; } Rec.chunks.push(q); Rec.total+=n; };
@@ -576,7 +581,7 @@ const Rec = {
     $('bRec').textContent='■ '+m+':'+(s<10?'0':'')+s; if(sec>=REC_MAX) this.stop();
   },
   stop(){
-    if(!this.on) return; this.note([],0); this.on=false; clearInterval(this.timer);
+    if(!this.on) return; this.note([],0); Object.keys(this.kbCur).forEach(id=>this.kbOff(id)); this.on=false; clearInterval(this.timer);
     try{ Synth.tap.disconnect(); this.proc.disconnect(); this.mute.disconnect(); }catch(e){}
     this.proc.onaudioprocess=null; $('bRec').classList.remove('on'); $('bRec').textContent='● Rec';
     if(this.total<2000){ this.chunks=[]; return toast('Nothing recorded'); }
@@ -627,6 +632,7 @@ const ROWS = [
   {k:'glide', l:'Note change (slide between notes, or play each cleanly)', o:[[true,'Slide'],[false,'Steps']]},
   {k:'step',  l:'Degrees per note (10 default, 4 = fine)', o:[[12,'12°'],[10,'10°'],[8,'8°'],[6,'6°'],[4,'4°']]},
   {k:'key',   l:'Key: major scale with its ♯/♭ built in (Scale layout)', o:KEYS.map((k,i)=>[i,k.name])},
+  {k:'showKey', l:'Show current key on the wheel', o:[[true,'Show'],[false,'Hide']]},
   {k:'layout',l:'Layout', o:[['scale','Scale'],['chromatic','Chromatic']].map(o=>[o[0]==='scale'?'natural':o[0],o[1]])},
   {k:'acc',   l:'♯ / ♭ method', o:[['zone','Pad zones'],['tilt','Tilt'],['off','Off']]},
   {k:'tiltTh',l:'Tilt trigger', o:[[8,'Sensitive'],[12,'Normal'],[16,'Firm']]},
@@ -649,6 +655,7 @@ const Settings = {
   apply(k){
     if(k==='step'&&cfg.step===4&&cfg.oct>2){ cfg.oct=2; Store.save(); Settings.build(); }   // fine step starts at C2
     if(Player.playing && (k==='play'||k==='voicing'||k==='capo'||k==='coct'||k==='inst'||k==='layout'||k==='oct'||k==='key'||k==='step')){ Synth.stop(0.03); Player.playing=false; Player.key=''; Player.notes=[]; Rec.note([],0); }
+    if(k==='showKey') View.buildLabels();
     if(k==='step'||k==='layout'||k==='oct'||k==='key'||k==='play'){ S.idx=-1; Gl.build(); View.buildLabels(); if(S.slider){ if(k==='oct'||k==='key') SL.layout(); else SL.reset(); } }   // octave shift keeps slider thumbs where they are
     if(k==='play') View.modeUI();
     if(k==='sl'){ View.slUI(); if(S.slider) SL.reset(); }
@@ -743,11 +750,22 @@ const Guard = {
 
 /* ================= 15c. KEYBOARD (desktop aid: mirrors the pad + octave buttons, ignored while typing in a field) ================= */
 const Keys = {
-  down:{}, 
+  down:{}, voices:{}, MAXV:8, desktop:window.matchMedia && window.matchMedia('(pointer: fine)').matches,   // row-of-12 note keys: desktop (mouse/trackpad) only, not touch phones
+  ROW:'qwertyuiop[]'.split(''),
+  pressNote(i){                                      // each key gets its OWN independent voice, so it can sound alongside the pad/slider's own note (true polyphony)
+    if(this.voices[i] || i>=Mapper.count()) return;
+    if(Object.keys(this.voices).length>=this.MAXV) return;   // cap reached: silently ignored, never steals or cuts an already-sounding note
+    Synth.resume(); const n=Mapper.describe(i,0), v=Synth.build(Mapper.freq(n.midi),0,0.55,false,false);
+    if(!v) return; this.voices[i]=v; Rec.kbOn('k'+i,n.midi); S.dirty=true;
+  },
+  releaseNote(i){ const v=this.voices[i]; if(!v) return; delete this.voices[i]; Synth.release(v); Rec.kbOff('k'+i); S.dirty=true; },
+  releaseAll(){ Object.keys(this.voices).map(Number).forEach(i=>this.releaseNote(i)); [-1,0,1].forEach(z=>this.release(z)); },   // guards against notes sticking if focus is lost mid-press
   press(z){ if(this.down[z]) return; this.down[z]=true; Synth.resume(); S.touch=true; S.zone=z; S.padDown=true; Input.heldSync(); Core.update(); },
   release(z){ if(!this.down[z]) return; this.down[z]=false; if(!this.down[-1]&&!this.down[0]&&!this.down[1]){ S.touch=false; S.zone=0; S.padDown=false; Input.heldSync(); } Core.update(); },
   init(){
     const typing=e=>e.target && /^(input|textarea)$/i.test(e.target.tagName);
+    window.addEventListener('blur',()=>Keys.releaseAll());
+    document.addEventListener('visibilitychange',()=>{ if(document.hidden) Keys.releaseAll(); });
     window.addEventListener('keydown',e=>{
       if(typing(e)||e.repeat) return; const k=e.key.toLowerCase();
       if(k===' '||k==='g'){ e.preventDefault(); this.press(0); }
@@ -755,10 +773,12 @@ const Keys = {
       else if(k==='h'){ e.preventDefault(); this.press(1); }
       else if(k==='z'){ if(cfg.oct>1) Settings.set('oct',cfg.oct-1); }
       else if(k==='x'){ if(cfg.oct<5) Settings.set('oct',cfg.oct+1); }
+      else if(this.desktop){ const ri=this.ROW.indexOf(k); if(ri>=0 && ri<Mapper.count()){ e.preventDefault(); Synth.resume(); this.pressNote(ri); } }
     });
     window.addEventListener('keyup',e=>{
       if(typing(e)) return; const k=e.key.toLowerCase();
       if(k===' '||k==='g') this.release(0); else if(k==='f') this.release(-1); else if(k==='h') this.release(1);
+      else if(this.desktop){ const ri=this.ROW.indexOf(k); if(ri>=0) this.releaseNote(ri); }
     });
   }
 };
