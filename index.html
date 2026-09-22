@@ -61,6 +61,7 @@ body.oneL #sR{display:none}body.oneR #sL{display:none}
 .btn,#oct button{touch-action:manipulation}
 #svMsg{font-size:13px;word-break:break-all}#svMsg a{color:var(--ink)}
 #svAudio{width:100%;margin:0 0 14px;display:block}
+#cred{font-size:11px;color:var(--mute);margin:16px 0 0;line-height:1.45}
 /* ===== CSS 4: SHEET / OVERLAY / TOAST ===== */
 #sheet{position:fixed;left:0;right:0;bottom:0;max-height:80vh;overflow:auto;touch-action:pan-y;background:var(--bg);border-top:1px solid var(--line);border-radius:16px 16px 0 0;
  padding:16px 16px calc(20px + env(safe-area-inset-bottom));transform:translateY(105%);transition:transform .22s ease;z-index:5}
@@ -79,7 +80,7 @@ input[type=range]{width:100%}
 #toast.on{opacity:1}
 /* ===== CSS 5: SLIDER MODE ===== */
 .bar .btn{padding:9px 10px;font-size:13px}
-.vs{position:absolute;top:8%;bottom:14%;width:56px;border:1px solid var(--line);border-radius:28px;background:var(--paper);touch-action:none;display:none}
+.vs{position:absolute;top:8%;bottom:14%;width:56px;border:1px solid var(--line);border-radius:28px;background:var(--paper);touch-action:none;display:none;-webkit-touch-callout:none;-webkit-user-select:none}
 body.sl .vs{display:block}#sL{left:10px}#sR{right:10px}
 .vs i{position:absolute;left:4px;width:46px;height:48px;border-radius:24px;background:var(--ink);bottom:4px}
 .vs b{position:absolute;left:0;right:0;top:50%;margin-top:-8px;text-align:center;font-size:12px;color:var(--mute);font-weight:400}
@@ -95,7 +96,7 @@ body.sl .vs{display:block}#sL{left:10px}#sR{right:10px}
   <div id="pad"><div class="z s">♭</div><div class="z c"><span id="padT">Hold to play</span></div><div class="z s">♯</div></div>
 </div>
 <div id="toast"></div>
-<div id="sheet"><div class="bar" style="padding:0"><b style="font-weight:400;font-size:18px">Settings</b><button class="btn" id="bClose">Close</button></div><div id="rows"></div></div>
+<div id="sheet"><div class="bar" style="padding:0"><b style="font-weight:400;font-size:18px">Settings</b><button class="btn" id="bClose">Close</button></div><div id="rows"></div><p id="cred">Grand piano samples: “Salamander Grand Piano V3” by Alexander Holm, CC BY 3.0 (creativecommons.org/licenses/by/3.0). Loaded from ./samples/ or the internet; if unavailable the built-in piano plays.</p></div>
 <div id="ov">
   <div class="panel" id="p-gate"><h2>Compass Instrument</h2><p id="gateMsg">Turn your phone to play notes. Motion sensors are required.</p><div class="acts"><button class="btn" id="bSlide">Use sliders</button><button class="btn pri" id="bStart">Enable compass</button></div></div>
   <div class="panel" id="p-calib"><h2>Calibrate</h2><p>Face your starting direction (0°). Hold the phone as you will play: screen up, tilted slightly toward you.</p><div id="cLive">–</div><div class="acts"><button class="btn" id="cCancel">Cancel</button><button class="btn pri" id="cSet">Set zero</button></div></div>
@@ -107,7 +108,7 @@ body.sl .vs{display:block}#sL{left:10px}#sR{right:10px}
 'use strict';
 /* ================= 1. CONFIG (constants + defaults) ================= */
 const RANGE = 180, HYST = 0.2;                       // playable arc (deg), note-border hysteresis
-const DEFAULTS = {inst:'piano',mode:'press',glide:true,step:10,layout:'natural',acc:'zone',tiltTh:12,oct:4,vol:0.8,smooth:1,locked:false,play:'notes',voicing:'guitar',capo:0,clev:2,coct:1,sl:'two',key:0,slplay:'off'};
+const DEFAULTS = {inst:'piano',mode:'press',glide:true,step:10,layout:'natural',acc:'zone',tiltTh:12,oct:4,vol:0.8,smooth:1,locked:false,play:'notes',voicing:'guitar',capo:0,clev:2,coct:1,sl:'two',key:0,slplay:'off',rev:0.32};
 const PAL = ['#E05A4F','#EE9A3A','#EFCB45','#6DB65B','#3FB4B0','#4F86D9','#8A62C4']; // C D E F G A B (swap here to match any palette)
 const SMOOTH_K = [0.14,0.28,0.5];                    // base filter gain per smoothing level
 const LET = 'CDEFGAB', WHITE = [0,2,4,5,7,9,11];
@@ -127,9 +128,15 @@ const INST = {
   strings:{p:[['sawtooth',1,.5,-7],['sawtooth',1,.5,7]],a:.12,d:0,s:1,r:.3,lp:1800,vib:3},
   bell:   {p:[['sine',1,1],['sine',2.76,.4],['sine',5.4,.2]],a:.002,d:.9,s:.05,r:.3,lp:8000},
   synth:  {p:[['square',1,.5]],a:.01,d:0,s:.8,r:.1,lp:2500},
+  grand:  {sample:true,p:[],a:.003,d:0,s:1,r:.4,lp:20000},   // sampled grand piano (falls back to 'piano' while samples are missing)
   guitar: {p:[['triangle',1,1],['sine',2,.35],['sine',3,.12]],a:.002,d:.32,s:.03,r:.2,lp:3600}
 };
-const INST_LABEL = {piano:'Piano',organ:'Organ',flute:'Flute',strings:'Strings',bell:'Bell',synth:'Synth',guitar:'Guitar'};
+const INST_LABEL = {piano:'Piano',organ:'Organ',flute:'Flute',strings:'Strings',bell:'Bell',synth:'Synth',guitar:'Guitar',grand:'Grand piano'};
+
+/* sampled grand piano: Salamander Grand Piano V3 by Alexander Holm, CC BY 3.0 (files: A0, C1, Ds1, Fs1, A1 ... A7, C8)
+   sources are tried in order; if none loads, the built-in synth piano is used. Put the mp3 files in ./samples/ for reliable/offline use. */
+const SAMPLE_BASES = ['./samples/','https://raw.githubusercontent.com/Tonejs/audio/master/salamander/','https://tonejs.github.io/audio/salamander/'];
+const SMP = [['A0',21]]; for(let o=1;o<=7;o++){ const c=12*(o+1); SMP.push(['C'+o,c],['Ds'+o,c+3],['Fs'+o,c+6],['A'+o,c+9]); } SMP.push(['C8',108]);
 
 /* ================= 2. STATE ================= */
 const cfg = Object.assign({}, DEFAULTS);
@@ -268,6 +275,33 @@ const Chords = {
 };
 /*CHORDS-END*/
 
+/* ================= 6c. SAMPLES (optional sampled grand piano; cached with the Cache API for offline reuse) ================= */
+const Samples = {
+  buf:{}, midis:[], state:'idle', n:0,
+  getCached(url){ try{ if(!window.caches) return Promise.resolve(null); return caches.open('ci-piano-v1').then(c=>c.match(url)).catch(()=>null); }catch(e){ return Promise.resolve(null); } },
+  putCache(url,res){ try{ if(window.caches) caches.open('ci-piano-v1').then(c=>c.put(url,res)).catch(()=>{}); }catch(e){} },
+  fetchBuf(name){                                    // try each source in order
+    const go=i=>{ if(i>=SAMPLE_BASES.length) return Promise.reject(new Error('unavailable'));
+      const url=SAMPLE_BASES[i]+name+'.mp3';
+      return this.getCached(url).then(hit=>hit||fetch(url).then(r=>{ if(!r.ok) throw new Error(r.status); this.putCache(url,r.clone()); return r; }))
+        .then(r=>r.arrayBuffer()).catch(()=>go(i+1)); };
+    return go(0);
+  },
+  decode(ab){ return new Promise((ok,no)=>{ try{ const p=Synth.ctx.decodeAudioData(ab,ok,no); if(p&&p.catch) p.catch(no); }catch(e){ no(e); } }); },   // callback form: works on old Safari
+  mono(b){ if(b.numberOfChannels<2) return b; const c=Synth.ctx.createBuffer(1,b.length,b.sampleRate), o=c.getChannelData(0), l=b.getChannelData(0), r=b.getChannelData(1); for(let i=0;i<o.length;i++) o[i]=(l[i]+r[i])*0.5; return c; },   // half the memory
+  load(){
+    if(!(this.state==='idle'||this.state==='failed')) return;
+    if(!Synth.ctx||!window.fetch){ this.state='failed'; return; }
+    this.state='loading'; this.n=0; this.buf={}; let i=0; const N=SMP.length; toast('Loading grand piano…');
+    const next=()=>{ if(i>=N) return; const m=SMP[i++];
+      this.fetchBuf(m[0]).then(ab=>this.decode(ab)).then(b=>{ this.buf[m[1]]=this.mono(b); }).catch(()=>{})
+        .then(()=>{ this.n++; if(this.n>=N) this.finish(); else next(); }); };
+    for(let k=0;k<4;k++) next();                     // 4 downloads at a time
+  },
+  finish(){ this.midis=Object.keys(this.buf).map(Number).sort((a,b)=>a-b); const ok=this.midis.length>=8; this.state=ok?'ready':'failed';
+    toast(ok?'Grand piano ready':'Piano samples unavailable: using built-in piano'); }
+};
+
 /* ================= 7. SYNTH (Web Audio, mono voice, no samples) ================= */
 function silentWav(){
   const n=800,b=new ArrayBuffer(44+n*2),v=new DataView(b),w=(o,s)=>{for(let i=0;i<s.length;i++)v.setUint8(o+i,s.charCodeAt(i));};
@@ -287,19 +321,32 @@ const Synth = {
       for(let i=0;i<N;i++){ const v=i/(N-1)*2-1; cv[i]=Math.tanh(1.2*v)/Math.tanh(1.2); } sat.curve=cv;   // soft limiter: no harsh clipping at high chord level
       this.cmaster.connect(comp2); comp2.connect(this.cpost); this.cpost.connect(sat); sat.connect(this.out);
       this.setVol();
-      this.tap=x.createGain(); this.out.connect(this.tap);   // recorder tap (no output until recording)
+      this.tap=x.createGain();                              // recorder input: DRY signal only (live monitoring stays untouched)
+      this.out.connect(this.tap);
+      this.revWet=x.createGain(); this.revWet.gain.value=0.32;              // export-only reverb send (built in code, no impulse file)
+      this.conv=x.createConvolver(); this.conv.buffer=this.makeIR(2.1,2.6);
+      this.out.connect(this.conv); this.conv.connect(this.revWet); this.revWet.connect(this.tap);   // recorder tap (no output until recording)
     }
     this.resume();
     try{ if(navigator.audioSession) navigator.audioSession.type='playback'; }catch(e){}   // iOS: ignore silent switch
     try{ const a=new window.Audio(silentWav()); a.loop=true; a.play().catch(()=>{}); }catch(e){}
+    if(INST[cfg.inst]&&INST[cfg.inst].sample) Samples.load();
+  },
+  makeIR(sec,decay){                                   // algorithmic reverb tail: exponentially-decaying filtered noise, generated at runtime (no download)
+    const x=this.ctx, n=Math.round(sec*x.sampleRate), buf=x.createBuffer(2,n,x.sampleRate);
+    for(let ch=0;ch<2;ch++){ const d=buf.getChannelData(ch); let lp=0;
+      for(let i=0;i<n;i++){ const w=(Math.random()*2-1); lp+=(w-lp)*0.18; d[i]=lp*Math.pow(1-i/n,decay); } }   // low-passed noise = smoother "hall" tail than raw white noise
+    return buf;
   },
   resume(){ if(this.ctx && this.ctx.state!=='running') this.ctx.resume(); },
-  setVol(){ if(!this.master) return; this.master.gain.value=cfg.vol*0.6; this.cmaster.gain.value=cfg.vol*0.6; this.cpost.gain.value=cfg.clev; },
+  setVol(){ if(!this.master) return; this.master.gain.value=cfg.vol*0.6; this.cmaster.gain.value=cfg.vol*0.6; this.cpost.gain.value=cfg.clev; if(this.revWet) this.revWet.gain.value=cfg.rev; },
   start(f){ this.voice=this.build(f,0,1,false); },
   chord(fs,strum){ const sc=1/Math.sqrt(fs.length); this.voice={multi:fs.map((f,i)=>this.build(f,i*strum,sc,fs.length>=5,true)).filter(Boolean)}; },   // strum = seconds between notes
   build(f,delay,scale,lite,bus){
     const c=this.ctx; if(!c) return null; this.resume();
-    const I=INST[cfg.inst], t=c.currentTime+delay, env=c.createGain(), lp=c.createBiquadFilter(), oscs=[];
+    let I=INST[cfg.inst];
+    if(I.sample){ if(Samples.state==='ready') return this.buildSample(f,delay,scale,bus,I); I=INST.piano; }   // fallback: built-in piano
+    const t=c.currentTime+delay, env=c.createGain(), lp=c.createBiquadFilter(), oscs=[];
     lp.type='lowpass'; lp.frequency.value=I.lp; lp.Q.value=0.5; env.connect(lp); lp.connect(bus?this.cmaster:this.master);
     (lite?I.p.slice(0,3):I.p).forEach(p=>{ const o=c.createOscillator(), g=c.createGain(); o.type=p[0]; o.frequency.value=f*p[1]; if(p[3]) o.detune.value=p[3]; g.gain.value=p[2]*scale; o.connect(g); g.connect(env); o.start(t); oscs.push({o:o,r:p[1]}); });
     let lfo=null;
@@ -310,6 +357,15 @@ const Synth = {
   glide(f){ const v=this.voice; if(!v) return; const t=this.ctx.currentTime; v.oscs.forEach(x=>x.o.frequency.setTargetAtTime(f*x.r,t,0.035)); },
   retrigger(f){ this.stop(0.03); this.start(f); },
   stop(r){ const v=this.voice; this.voice=null; if(!v) return; (v.multi||[v]).forEach(x=>this.release(x,r)); },
+  buildSample(f,delay,scale,bus,I){
+    const c=this.ctx, t=c.currentTime+delay, midi=69+12*Math.log(f/440)/Math.LN2, ms=Samples.midis; let best=ms[0];
+    for(let i=1;i<ms.length;i++) if(Math.abs(ms[i]-midi)<Math.abs(best-midi)) best=ms[i];      // nearest recorded note, then pitch-shift (max ~1.5 semitones)
+    const src=c.createBufferSource(), k=Math.pow(2,(midi-best)/12), env=c.createGain(), lp=c.createGain(), gain=4.5*Math.pow(2,Math.max(0,midi-72)/36);   // gain: match built-in piano loudness
+    src.buffer=Samples.buf[best]; src.playbackRate.value=k; src.connect(env); env.connect(lp); lp.connect(bus?this.cmaster:this.master);
+    env.gain.setValueAtTime(0,t); env.gain.linearRampToValueAtTime(scale*gain,t+I.a); src.start(t);
+    const o={ stop:tt=>{ try{ src.stop(tt); }catch(e){} }, frequency:{ setTargetAtTime:(v,tt,tc)=>src.playbackRate.setTargetAtTime(v*k/f,tt,tc) } };   // lets glide() slide sampled notes too
+    return {env:env,lp:lp,oscs:[{o:o,r:1}],lfo:null,I:I};
+  },
   release(v,r){
     const c=this.ctx, t=c.currentTime, g=v.env.gain; r=r||v.I.r;
     if(g.cancelAndHoldAtTime) g.cancelAndHoldAtTime(t); else { g.cancelScheduledValues(t); g.setValueAtTime(g.value,t); }
@@ -333,7 +389,7 @@ const Player = {
     this.key=n.key; this.notes=n.notes; Rec.note(n.notes,strum);
     if(n.chord){ if(change) Synth.stop(0.04); Synth.chord(n.notes.map(Mapper.freq),strum); }
     else if(!change) Synth.start(Mapper.freq(n.notes[0]));
-    else { const f=Mapper.freq(n.notes[0]); (cfg.mode==='auto' && !cfg.glide) ? Synth.retrigger(f) : Synth.glide(f); }
+    else { const f=Mapper.freq(n.notes[0]); cfg.glide ? Synth.glide(f) : Synth.retrigger(f); }   // now applies to press mode too, not just always-on
   }
 };
 
@@ -497,7 +553,7 @@ function midiBlob(ev,gm){                            // SMF type 0, 480 ticks/qu
   return new Blob([new Uint8Array(h.concat(tr))],{type:'audio/midi'});
 }
 /*WAVMIDI-END*/
-const GM = {piano:0,organ:19,flute:73,strings:48,bell:14,synth:80,guitar:24}, REC_MAX = 300;   // General MIDI programs; auto-stop at 5 min
+const GM = {piano:0,organ:19,flute:73,strings:48,bell:14,synth:80,guitar:24,grand:0}, REC_MAX = 300;   // General MIDI programs; auto-stop at 5 min
 const Rec = {
   on:false, t0:0, cur:[], ev:[], chunks:[], total:0, proc:null, mute:null, inst:'piano', timer:0, wav:null, mid:null,
   note(ms,strum){                                    // Player calls this on every sound change (ms = array of MIDI notes)
@@ -566,8 +622,9 @@ const ROWS = [
   {k:'voicing',l:'Chord voicing', o:[['guitar','Guitar shapes'],['piano','Piano']]},
   {k:'capo',  l:'Capo (chords only)', o:[[0,'None'],[1,'1'],[2,'2'],[3,'3'],[4,'4'],[5,'5'],[6,'6'],[7,'7']]},
   {k:'coct',  l:'Chord pitch (octave shift)', o:[[0,'Low'],[1,'Mid'],[2,'High']]},
-  {k:'clev',  l:'Chord level (raise if chords sound quiet)', o:[[1,'×1'],[1.5,'×1.5'],[2,'×2'],[3,'×3']]},
-  {k:'glide', l:'Always-on note change', o:[[true,'Slide'],[false,'Steps']]},
+{k:'clev',  l:'Chord level (raise if chords sound quiet)', o:[[1,'×1'],[1.5,'×1.5'],[2,'×2'],[3,'×3']]},
+  {k:'rev',   l:'Reverb on saved recordings (live play stays dry)', o:[[0,'Off'],[0.32,'Light'],[0.55,'Hall']]},
+  {k:'glide', l:'Note change (slide between notes, or play each cleanly)', o:[[true,'Slide'],[false,'Steps']]},
   {k:'step',  l:'Degrees per note (10 default, 4 = fine)', o:[[12,'12°'],[10,'10°'],[8,'8°'],[6,'6°'],[4,'4°']]},
   {k:'key',   l:'Key: major scale with its ♯/♭ built in (Scale layout)', o:KEYS.map((k,i)=>[i,k.name])},
   {k:'layout',l:'Layout', o:[['scale','Scale'],['chromatic','Chromatic']].map(o=>[o[0]==='scale'?'natural':o[0],o[1]])},
@@ -598,6 +655,8 @@ const Settings = {
     if(k==='slplay'){ S.slDown=false; Input.heldSync(); }
     if(k==='mode'){ S.padDown=false; S.slDown=false; S.held=false; S.paused=false; }
     if(k==='clev') Synth.setVol();
+    if(k==='rev' && Synth.revWet) Synth.revWet.gain.value=cfg.rev;
+    if(k==='inst' && INST[cfg.inst].sample) Samples.load();
     View.octPaint(); Core.update();
   },
   toggle(on){ $('sheet').classList.toggle('on',on); }
@@ -648,11 +707,16 @@ const Input = {
   heldSync(){ S.held = S.padDown || S.slDown; },
   init(){
     const pad=View.c.pad;
-    const zoneAt=x=>{ const b=pad.getBoundingClientRect(), f=(x-b.left)/b.width; return f<0.25?-1:(f>0.75?1:0); };   // left = flat, right = sharp
+    /* ---- PAD: TWO-HAND PATH (unchanged logic — measures live on every move, exactly as before) ---- */
+    const zoneAtLive=x=>{ const b=pad.getBoundingClientRect(), f=(x-b.left)/b.width; return f<0.25?-1:(f>0.75?1:0); };
+    /* ---- PAD: ONE-HAND PATH (separate function — caches the pad's position once per touch, so a fast-moving slider drag on the same frame can't slow this down) ---- */
+    let padRect=null;
+    const zoneAtCached=x=>{ const b=padRect||(padRect=pad.getBoundingClientRect()), f=(x-b.left)/b.width; return f<0.25?-1:(f>0.75?1:0); };
+    const zoneAt=x=>SL.one() ? zoneAtCached(x) : zoneAtLive(x);   // chosen purely by current mode; neither path's internals affect the other
     Drag.bind(pad,{
-      down:x=>{ Synth.resume(); S.touch=true; S.zone=zoneAt(x); if(cfg.mode==='auto'){ if(S.zone===0) S.paused=!S.paused; } else { S.padDown=true; Input.heldSync(); } Core.update(); },
+      down:x=>{ Synth.resume(); padRect=null; S.touch=true; S.zone=zoneAt(x); if(cfg.mode==='auto'){ if(S.zone===0) S.paused=!S.paused; } else { S.padDown=true; Input.heldSync(); } Core.update(); },
       move:x=>{ const z=zoneAt(x); if(z!==S.zone){ S.zone=z; Core.update(); } },
-      up:()=>{ S.touch=false; S.zone=0; S.padDown=false; Input.heldSync(); Core.update(); } });
+      up:()=>{ S.touch=false; S.zone=0; S.padDown=false; padRect=null; Input.heldSync(); Core.update(); } });
     SL.init();
     const qs=$('qs'), setQ=x=>{ const b=qs.getBoundingClientRect(); const nq=qs.children.length; let q=Math.floor((x-b.left)/b.width*nq); q=Math.max(0,Math.min(nq-1,q)); if(q!==S.q) Chords.setGroup(q); };
     Drag.bind(qs,{down:setQ,move:setQ});                 // chord-type slider (snaps to 6 groups)
@@ -674,6 +738,28 @@ const Guard = {
     document.addEventListener('touchmove',e=>{ if(!Guard.in(e,'#sheet,#ov')) e.preventDefault(); },{passive:false});      // no page drag / pinch drift
     let last=0;                                                                                                            // old iOS: double-tap zoom on play surfaces
     document.addEventListener('touchend',e=>{ const now=Date.now(); if(Guard.in(e,'#stage,#pad,.vs,#qs') && now-last<350) e.preventDefault(); last=now; },{passive:false});
+  }
+};
+
+/* ================= 15c. KEYBOARD (desktop aid: mirrors the pad + octave buttons, ignored while typing in a field) ================= */
+const Keys = {
+  down:{}, 
+  press(z){ if(this.down[z]) return; this.down[z]=true; Synth.resume(); S.touch=true; S.zone=z; S.padDown=true; Input.heldSync(); Core.update(); },
+  release(z){ if(!this.down[z]) return; this.down[z]=false; if(!this.down[-1]&&!this.down[0]&&!this.down[1]){ S.touch=false; S.zone=0; S.padDown=false; Input.heldSync(); } Core.update(); },
+  init(){
+    const typing=e=>e.target && /^(input|textarea)$/i.test(e.target.tagName);
+    window.addEventListener('keydown',e=>{
+      if(typing(e)||e.repeat) return; const k=e.key.toLowerCase();
+      if(k===' '||k==='g'){ e.preventDefault(); this.press(0); }
+      else if(k==='f'){ e.preventDefault(); this.press(-1); }
+      else if(k==='h'){ e.preventDefault(); this.press(1); }
+      else if(k==='z'){ if(cfg.oct>1) Settings.set('oct',cfg.oct-1); }
+      else if(k==='x'){ if(cfg.oct<5) Settings.set('oct',cfg.oct+1); }
+    });
+    window.addEventListener('keyup',e=>{
+      if(typing(e)) return; const k=e.key.toLowerCase();
+      if(k===' '||k==='g') this.release(0); else if(k==='f') this.release(-1); else if(k==='h') this.release(1);
+    });
   }
 };
 
@@ -706,13 +792,14 @@ const Boot = {
     $('bStart').textContent='Try again'; Ov.show('gate');
   },
   init(){
-    Store.load(); Chords.init(); View.init(); Guard.init(); Settings.build(); Calib.paintLock(); Input.init();
+    Store.load(); Chords.init(); View.init(); Guard.init(); Keys.init(); Settings.build(); Calib.paintLock(); Input.init();
     const cv=$('cv'); if(!Gl.init(cv)){ $('gateMsg').textContent='WebGL is not available in this browser.'; $('bStart').disabled=true; }
     else { Boot.fit=()=>{ Gl.resize(cv); View.buildLabels(); S.dirty=true; }; Boot.fit(); window.addEventListener('resize',Boot.fit); window.addEventListener('orientationchange',()=>setTimeout(Boot.fit,250)); }
     Sensor.onData=Core.onSensor; View.modeUI(); View.slUI();
     $('bStart').onclick=()=>Boot.start(); $('bSlide').onclick=()=>Boot.useSlider(); $('bMode').onclick=()=>{ if(S.slider) Boot.start(); else Boot.useSlider(); };
     $('bCal').onclick=()=>Calib.request(); $('bLock').onclick=()=>Calib.toggleLock();
-    $('bSet').onclick=()=>Settings.toggle(true); $('bClose').onclick=()=>Settings.toggle(false);
+    $('bSet').onclick=()=>Settings.toggle(!document.getElementById('sheet').classList.contains('on')); $('bClose').onclick=()=>Settings.toggle(false);
+    document.getElementById('app').addEventListener('pointerdown',()=>{ if(document.getElementById('sheet').classList.contains('on')) Settings.toggle(false); });
     $('cSet').onclick=()=>Calib.commit(); $('cCancel').onclick=()=>{ if(S.zero!==null) Ov.hide(); else toast('Set zero to start'); };
     $('kYes').onclick=()=>Calib.open(); $('kNo').onclick=()=>Ov.hide();
     $('bRec').onclick=()=>{ if(Rec.on) Rec.stop(); else Rec.start(); };
